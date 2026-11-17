@@ -7,6 +7,7 @@
 #include "llama.h"
 
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <climits>
 #include <cstdint>
@@ -106,6 +107,15 @@ struct LlamaBackend::Impl {
         const auto start = Clock::now();
         auto params = llama_model_default_params();
         params.n_gpu_layers = options.gpu_layers;
+        // A non-null, empty device list means "no accelerator devices" in
+        // pinned llama.cpp b12445. Setting n_gpu_layers=0 alone does NOT do
+        // this: with a visible CUDA device the context may still select a
+        // CUDA backend for non-weight operations (verified on RTX 5070).
+        // Keep the list alive until model destruction because the upstream
+        // model parameters may retain this pointer.
+        if (options.gpu_layers == 0) {
+            params.devices = cpu_only_devices.data();
+        }
         model.reset(llama_model_load_from_file(path.c_str(), params));
         load_seconds = seconds(start, Clock::now());
 
@@ -122,6 +132,8 @@ struct LlamaBackend::Impl {
     }
 
     EngineOptions options;
+    // Must outlive model, which may retain llama_model_params.devices.
+    std::array<ggml_backend_dev_t, 1> cpu_only_devices{{nullptr}};
     ModelPtr model;
     const llama_vocab* vocab = nullptr;
     double load_seconds = 0.0;
