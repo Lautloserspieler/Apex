@@ -65,7 +65,7 @@ The result is printed to stdout. For real inference Apex reports prompt/output t
 
 CPU-only CI, Windows-x64 CI, and a Linux backend compilation job run on pull requests. Ordinary CI does **not** download multi-hundred-MB model weights. Optionally set `APEX_TEST_MODEL` to the path of a suitable GGUF file before running CTest to enable a real-model integration test.
 
-The GGUF loader and model implementation belong to pinned llama.cpp; Apex does not yet independently validate every model architecture/quantization. Unsupported models, malformed files or insufficient memory can cause load failure. Timing results are **unwarmed single-run diagnostics**, not apples-to-apples performance benchmarks.
+The GGUF loader and model implementation belong to pinned llama.cpp; Apex does not yet independently validate every model architecture/quantization. Unsupported models, malformed files or insufficient memory can cause load failure. Timing results are **unwarmed single-run diagnostics**, not apples-to-apples performance benchmarks. See [docs/support-matrix.md](docs/support-matrix.md) for exactly what has been built, tested and verified so far, versus what remains unverified.
 
 The roadmap is tracked in [Issues](https://github.com/Lautloserspieler/Apex/issues); [Phase 2](https://github.com/Lautloserspieler/Apex/issues/2) covers true generation and baseline validation, and [Phase 3](https://github.com/Lautloserspieler/Apex/issues/3) targets new CUDA optimizations.
 
