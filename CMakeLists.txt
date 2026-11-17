@@ -43,6 +43,20 @@ endif()
 
 include(CTest)
 
+# Direct upstream API reference, kept entirely separate from apex_engine.
+# Used only by real-model CI and opt-in Phase 2 correctness comparisons.
+if(APEX_ENABLE_LLAMA AND BUILD_TESTING)
+    add_executable(apex_llama_reference benchmarks/llama_reference.cpp)
+    target_link_libraries(apex_llama_reference PRIVATE llama)
+    set_target_properties(apex_llama_reference PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+    if(MSVC)
+        target_compile_options(apex_llama_reference PRIVATE /W4 /utf-8)
+    else()
+        target_compile_options(apex_llama_reference PRIVATE -Wall -Wextra -Wpedantic)
+    endif()
+endif()
+
 add_library(apex_engine
     src/engine/engine.cpp
     src/engine/llama_backend.cpp
