@@ -29,6 +29,16 @@ TEST_CASE("Mock mode must be selected and identified explicitly", "[engine]") {
     REQUIRE(output.find("max_tokens=10") != std::string::npos);
 }
 
+TEST_CASE("Mock generation never reports resource diagnostics", "[engine]") {
+    // peak_vram_mib/avg_power_watts are a Phase 3 CUDA-only diagnostic
+    // (see GenerationStats); mock mode must never fabricate them.
+    apex::Engine engine(apex::EngineMode::Mock);
+    REQUIRE(engine.loadModel("mock://resource-stats"));
+    const auto result = engine.generateDetailed("Hello", 5);
+    REQUIRE(result.stats.peak_vram_mib == 0.0);
+    REQUIRE(result.stats.avg_power_watts == 0.0);
+}
+
 TEST_CASE("Generation validates its input and engine state", "[engine]") {
     apex::Engine engine(apex::EngineMode::Mock);
     REQUIRE_THROWS_AS(engine.generate("Hello"), std::logic_error);

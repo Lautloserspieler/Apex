@@ -18,6 +18,13 @@
 #include <utility>
 #include <vector>
 
+#if defined(APEX_WITH_CUDA)
+#include <atomic>
+#include <cstdio>
+#include <optional>
+#include <thread>
+#endif
+
 namespace apex {
 namespace {
 
@@ -91,6 +98,113 @@ std::vector<llama_token> tokenize(const llama_vocab* vocab, const std::string& t
     tokens.resize(static_cast<std::size_t>(written));
     return tokens;
 }
+
+#if defined(APEX_WITH_CUDA)
+#if defined(_WIN32)
+FILE* popen_compat(const char* command, const char* mode) { return _popen(command, mode); }
+int pclose_compat(FILE* stream) { return _pclose(stream); }
+#else
+FILE* popen_compat(const char* command, const char* mode) { return popen(command, mode); }
+int pclose_compat(FILE* stream) { return pclose(stream); }
+#endif
+
+struct GpuSample {
+    double vram_mib;
+    double power_watts;
+};
+
+// One-shot nvidia-smi query. Never throws: any failure (binary missing,
+// non-zero exit, unparsable output) yields std::nullopt, which the caller
+// treats as "no sample this tick" rather than an error - these stats are
+// diagnostic, not correctness-critical, and must not make generation fail.
+std::optional<GpuSample> query_nvidia_smi() {
+    FILE* pipe = popen_compat(
+        "nvidia-smi --query-gpu=memory.used,power.draw --format=csv,noheader,nounits -i 0",
+        "r");
+    if (!pipe) {
+        return std::nullopt;
+    }
+    std::array<char, 256> buffer{};
+    std::string line;
+    if (fgets(buffer.data(), static_cast<int>(buffer.size()), pipe) != nullptr) {
+        line = buffer.data();
+    }
+    if (pclose_compat(pipe) != 0 || line.empty()) {
+        return std::nullopt;
+    }
+    const auto comma = line.find(',');
+    if (comma == std::string::npos) {
+        return std::nullopt;
+    }
+    try {
+        const double vram_mib = std::stod(line.substr(0, comma));
+        const double power_watts = std::stod(line.substr(comma + 1));
+        return GpuSample{vram_mib, power_watts};
+    } catch (const std::exception&) {
+        return std::nullopt;
+    }
+}
+
+// Background-thread RAII sampler covering one generate() call. Polls
+// `nvidia-smi` every ~100ms to approximate peak VRAM and average power
+// draw. This is a coarse, process-spawn-based approximation, not a
+// continuous device-side measurement (e.g. via NVML callbacks) - adequate
+// for Phase 3 diagnostics, not for fine-grained kernel profiling. Call
+// stop() before reading the accumulated stats: it joins the background
+// thread, which is the synchronization point that makes the plain (not
+// atomic) accumulator fields below safe to read from the calling thread
+// afterwards.
+class GpuStatsSampler {
+public:
+    explicit GpuStatsSampler(bool active) : active_(active) {
+        if (active_) {
+            thread_ = std::thread([this] { run(); });
+        }
+    }
+
+    ~GpuStatsSampler() { stop(); }
+
+    GpuStatsSampler(const GpuStatsSampler&) = delete;
+    GpuStatsSampler& operator=(const GpuStatsSampler&) = delete;
+
+    void stop() {
+        if (!active_ || stopped_) {
+            return;
+        }
+        stop_requested_.store(true, std::memory_order_relaxed);
+        if (thread_.joinable()) {
+            thread_.join();
+        }
+        stopped_ = true;
+    }
+
+    double peak_vram_mib() const { return peak_vram_mib_; }
+    double avg_power_watts() const {
+        return sample_count_ > 0 ? power_sum_watts_ / static_cast<double>(sample_count_) : 0.0;
+    }
+
+private:
+    void run() {
+        using namespace std::chrono_literals;
+        while (!stop_requested_.load(std::memory_order_relaxed)) {
+            if (const auto sample = query_nvidia_smi()) {
+                peak_vram_mib_ = std::max(peak_vram_mib_, sample->vram_mib);
+                power_sum_watts_ += sample->power_watts;
+                ++sample_count_;
+            }
+            std::this_thread::sleep_for(100ms);
+        }
+    }
+
+    bool active_;
+    bool stopped_ = false;
+    std::atomic<bool> stop_requested_{false};
+    std::thread thread_;
+    double peak_vram_mib_ = 0.0;
+    double power_sum_watts_ = 0.0;
+    std::size_t sample_count_ = 0;
+};
+#endif // APEX_WITH_CUDA
 
 } // namespace
 
@@ -178,6 +292,12 @@ GenerationResult LlamaBackend::generate(const std::string& prompt, int max_token
     BatchPtr batch(llama_batch_ext_init(ctx.get()), &llama_batch_ext_free);
     if (!batch) throw std::runtime_error("Unable to create llama batch");
 
+#if defined(APEX_WITH_CUDA)
+    // Only meaningful when the GPU is actually in use; a CPU-only run on a
+    // CUDA-enabled build would just report host process VRAM noise.
+    GpuStatsSampler gpu_sampler(impl_->options.gpu_layers > 0);
+#endif
+
     GenerationResult output;
     output.stats.prompt_tokens = static_cast<int>(tokens.size());
     output.stats.model_load_seconds = impl_->load_seconds;
@@ -224,6 +344,12 @@ GenerationResult LlamaBackend::generate(const std::string& prompt, int max_token
     }
     output.stats.decode_seconds =
         first_token_time == Clock::time_point{} ? 0.0 : seconds(first_token_time, Clock::now());
+
+#if defined(APEX_WITH_CUDA)
+    gpu_sampler.stop();
+    output.stats.peak_vram_mib = gpu_sampler.peak_vram_mib();
+    output.stats.avg_power_watts = gpu_sampler.avg_power_watts();
+#endif
 
     return output;
 }

@@ -125,6 +125,32 @@ comparisons above. Record the result (including a null result, i.e. no
 measurable difference) in `benchmarks/results-2026-11-17.md` or a new dated
 file before concluding anything.
 
+## Phase 3: VRAM/power diagnostics (`peak_vram_mib`, `avg_power_watts`)
+
+`GenerationStats` now carries two CUDA-only diagnostic fields, addressing
+the "watt/token" and "VRAM/token" metrics called for in issue #3's
+research-based refinement. Implementation: a background `std::thread`
+polls `nvidia-smi --query-gpu=memory.used,power.draw` roughly every 100ms
+for the duration of one `generate()` call (only when `gpu_layers > 0` on a
+CUDA-enabled build), tracking the maximum VRAM reading and the average
+power reading. `main.cpp` prints `peak_vram_mib=` / `avg_power_watts=` in
+the `[Apex]` diagnostics line whenever at least one sample was collected.
+
+**What this is not:** a continuous, device-side measurement (e.g. via NVML
+polling or CUDA profiler hooks). It is a coarse, process-spawn-based
+sampler — fine for a first integration-overhead estimate, not for
+fine-grained kernel profiling. It also reports whole-GPU memory/power (via
+`-i 0`, the first visible device), so a shared/multi-tenant GPU will show
+noise from other processes. `0.0` always means "not measured" (CPU-only
+build, `gpu_layers == 0`, mock mode, or `nvidia-smi` missing/failed), never
+"measured as zero" — do not report it as a literal zero reading.
+
+**Not yet verified in CI or on real hardware** (written and syntax-checked
+in a session without a GPU or `nvidia-smi`): confirm on a CUDA build that
+`peak_vram_mib`/`avg_power_watts` populate with plausible values for a real
+generation run, and that they stay silently at `0.0` for a CPU-only run on
+the same `cuda-release` binary.
+
 ## External synthetic baseline recorded (2026-11-17)
 
 The official pinned `llama-bench` executable was built separately for CPU-only and CUDA on the Fedora RTX 5070 system. CPU `pp37/tg128`: **372.10 ± 4.07 / 109.09 ± 0.18 tok/s**; CUDA `pp37/tg128`: **11643.48 ± 3151.74 / 767.98 ± 1.12 tok/s**. These are standalone synthetic figures, **not** a like-for-like end-to-end performance comparison with the earlier multi-process Apex benchmark (CPU median prefill/decode **372.85 / 104.25**, CUDA **583.05 / 683.08 tok/s**). For full commands and constraints see [the dated evidence record](../benchmarks/results-2026-11-17.md#repeated-official-llamacpp-standalone-benchmark--fedora-44-2026-11-17). The standalone measurements establish a first external baseline only. Do not quote their differences as independent Apex kernel overhead; the same pinned llama.cpp kernels implement Apex Phase 2 real inference.

@@ -54,7 +54,15 @@ void stats(const apex::GenerationStats& s) {
               << " load_s=" << s.model_load_seconds
               << " ttft_s=" << s.ttft_seconds
               << " prefill_tok_s=" << prefill_tps
-              << " decode_tok_s=" << decode_tps << "\n";
+              << " decode_tok_s=" << decode_tps;
+    // 0.0 means "not measured" (CPU-only build/run, mock, or nvidia-smi
+    // unavailable) - see the GenerationStats doc comment. Only print when
+    // actually sampled so CPU runs don't show a misleading "0 MiB / 0 W".
+    if (s.peak_vram_mib > 0.0 || s.avg_power_watts > 0.0) {
+        std::cerr << " peak_vram_mib=" << s.peak_vram_mib
+                  << " avg_power_watts=" << s.avg_power_watts;
+    }
+    std::cerr << "\n";
 }
 } // namespace
 

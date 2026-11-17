@@ -79,6 +79,13 @@ if(APEX_ENABLE_LLAMA)
     target_link_libraries(apex_engine PRIVATE llama)
 endif()
 
+if(APEX_ENABLE_CUDA)
+    # Gates the nvidia-smi-based VRAM/power sampler in llama_backend.cpp.
+    # Separate from APEX_WITH_LLAMA because cpu-inference has LLAMA=ON but
+    # CUDA=OFF, and the sampler is meaningless without a GPU.
+    target_compile_definitions(apex_engine PRIVATE APEX_WITH_CUDA=1)
+endif()
+
 if(MSVC)
     target_compile_options(apex_engine PRIVATE /W4 /utf-8)
 else()
