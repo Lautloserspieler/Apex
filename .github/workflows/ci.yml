@@ -15,7 +15,7 @@ concurrency:
 
 jobs:
   build-and-test:
-    name: CPU build and tests (Ubuntu)
+    name: build-and-test
     runs-on: ubuntu-24.04
     timeout-minutes: 15
 
