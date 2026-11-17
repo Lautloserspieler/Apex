@@ -48,13 +48,14 @@ TEST_CASE("Context overflow is rejected even at the exact boundary (APEX_TEST_MO
     apex::Engine engine(apex::EngineMode::Real, options);
     REQUIRE(engine.loadModel(path));
 
-    // "A short greeting:" tokenizes to a handful of tokens; max_tokens is
-    // chosen so prompt_tokens + max_tokens lands exactly on context_size,
-    // the boundary that must be rejected (last position == context_size,
-    // out of the valid 0..context_size-1 range).
+    // "A short greeting:" tokenizes to a handful of tokens. The last
+    // generated token sits at position prompt_tokens + max_tokens - 1, so
+    // +1 beyond context_size - prompt_tokens makes that position land
+    // exactly on context_size, the boundary that must be rejected (valid
+    // positions are 0..context_size-1).
     const auto probe = engine.generateDetailed("A short greeting:", 1);
     const int prompt_tokens = probe.stats.prompt_tokens;
-    const int max_tokens = static_cast<int>(options.context_size) - prompt_tokens;
+    const int max_tokens = static_cast<int>(options.context_size) - prompt_tokens + 1;
     REQUIRE(max_tokens > 0);
     REQUIRE_THROWS_AS(engine.generateDetailed("A short greeting:", max_tokens), std::length_error);
 }
