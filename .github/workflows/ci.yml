@@ -18,27 +18,60 @@ jobs:
     name: build-and-test
     runs-on: ubuntu-24.04
     timeout-minutes: 15
-
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
+      - uses: actions/checkout@v4
       - name: Install build dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y build-essential cmake ninja-build
-
       - name: Cache Catch2 sources
         uses: actions/cache@v4
         with:
           path: .cache/fetchcontent
-          key: apex-catch2-${{ runner.os }}-${{ hashFiles('tests/CMakeLists.txt') }}
-
-      - name: Configure CPU Release
+          key: apex-tests-${{ runner.os }}-${{ hashFiles('tests/CMakeLists.txt') }}
+      - name: Configure CPU-only mock build
         run: cmake --preset cpu-release -DFETCHCONTENT_BASE_DIR="${GITHUB_WORKSPACE}/.cache/fetchcontent"
-
       - name: Build
         run: cmake --build --preset cpu-release --parallel 2
-
       - name: Test
         run: ctest --preset cpu-release --output-on-failure
+
+  windows-x64:
+    name: windows-x64
+    runs-on: windows-2025
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure MSVC x64, build and test
+        shell: pwsh
+        run: |
+          $vswhere = Join-Path "${env:ProgramFiles(x86)}" "Microsoft Visual Studio/Installer/vswhere.exe"
+          if (-not (Test-Path $vswhere)) { throw "Visual Studio installer not found" }
+          $installation = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          if (-not $installation) { throw "MSVC C++ x64 tools not found" }
+          $vcvars = Join-Path $installation "VC/Auxiliary/Build/vcvars64.bat"
+          $command = 'call "' + $vcvars + '" && cmake --preset cpu-release && cmake --build --preset cpu-release --parallel 2 && ctest --preset cpu-release --output-on-failure'
+          & cmd.exe /d /s /c $command
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+  inference-backend:
+    name: inference-backend
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install C++ build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake ninja-build git
+      - name: Cache pinned upstream sources
+        uses: actions/cache@v4
+        with:
+          path: .cache/inference-fetchcontent
+          key: apex-inference-b12445-catch2-v3.5.2-${{ runner.os }}
+      - name: Configure real GGUF backend
+        run: cmake --preset cpu-inference -DFETCHCONTENT_BASE_DIR="${GITHUB_WORKSPACE}/.cache/inference-fetchcontent"
+      - name: Compile reference backend and Apex
+        run: cmake --build --preset cpu-inference --parallel 2
+      - name: Run no-model unit tests
+        run: ctest --preset cpu-inference --output-on-failure

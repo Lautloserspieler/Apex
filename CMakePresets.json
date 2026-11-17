@@ -14,7 +14,8 @@
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
         "APEX_ENABLE_CUDA": "OFF",
-        "BUILD_TESTING": "ON"
+        "BUILD_TESTING": "ON",
+        "APEX_ENABLE_LLAMA": "OFF"
       }
     },
     {
@@ -25,17 +26,31 @@
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
         "APEX_ENABLE_CUDA": "OFF",
-        "BUILD_TESTING": "ON"
+        "BUILD_TESTING": "ON",
+        "APEX_ENABLE_LLAMA": "OFF"
       }
     },
     {
       "name": "cuda-release",
-      "displayName": "CUDA toolchain Release (requires nvcc)",
+      "displayName": "CUDA GGUF backend (requires CUDA toolkit)",
       "generator": "Ninja",
       "binaryDir": "${sourceDir}/build/${presetName}",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
         "APEX_ENABLE_CUDA": "ON",
+        "BUILD_TESTING": "ON",
+        "APEX_ENABLE_LLAMA": "ON"
+      }
+    },
+    {
+      "name": "cpu-inference",
+      "displayName": "CPU GGUF inference (pinned llama.cpp)",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/${presetName}",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "APEX_ENABLE_CUDA": "OFF",
+        "APEX_ENABLE_LLAMA": "ON",
         "BUILD_TESTING": "ON"
       }
     }
@@ -52,6 +67,10 @@
     {
       "name": "cuda-release",
       "configurePreset": "cuda-release"
+    },
+    {
+      "name": "cpu-inference",
+      "configurePreset": "cpu-inference"
     }
   ],
   "testPresets": [
@@ -72,6 +91,13 @@
     {
       "name": "cuda-release",
       "configurePreset": "cuda-release",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "cpu-inference",
+      "configurePreset": "cpu-inference",
       "output": {
         "outputOnFailure": true
       }

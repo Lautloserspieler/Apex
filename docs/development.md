@@ -1,40 +1,44 @@
-# Apex development (Phase 1)
+# Apex development guide — Phase 2
 
-## Toolchains
+## Toolchain
 
-Apex uses C++20 and CMake 3.21+. The recommended test toolchain is Ninja + GCC or Clang on Linux. Use the `cpu-debug` or `cpu-release` CMake preset. Do not install CUDA on ordinary CI runners just to compile the mock engine.
+Apex requires CMake 3.21+, Ninja, and a C++20 compiler. For Windows, launch an **x64 Visual Studio Developer PowerShell**; verify `cl` identifies x64. Ordinary PowerShell does not automatically load MSVC compiler environment.
+
+## Fast, hardware-independent tests
 
 ```bash
-cmake --preset cpu-debug
-cmake --build --preset cpu-debug --parallel
-ctest --preset cpu-debug --output-on-failure
-./build/cpu-debug/apex --mock --prompt "test"
+cmake --preset cpu-release
+cmake --build --preset cpu-release --parallel
+ctest --preset cpu-release --output-on-failure
 ```
 
-For CUDA configuration, install a compatible NVIDIA CUDA toolkit and select `cuda-release`. This option enables the CUDA **toolchain**, not model GPU execution. `nvcc` must be discoverable; override with `-DCMAKE_CUDA_COMPILER=/absolute/path/to/nvcc` when necessary.
+This builds only the mock engine and independent validation tests; **no real inference** happens.
 
-## Dependency policy
+## Compiling real GGUF inference
 
-Catch2 v3 is used for unit tests. CMake first looks for an installed Catch2 package, then fetches the pinned v3.5.2 tag. In GitHub Actions the FetchContent directory is cached between CI runs. If working offline, install Catch2 v3 and set `CMAKE_PREFIX_PATH`; no network fetch is then needed.
+```bash
+cmake --preset cpu-inference
+cmake --build --preset cpu-inference --parallel 2
+ctest --preset cpu-inference --output-on-failure
+```
 
-Do not add large GGUF models, generated caches, credentials or CUDA binaries to the repository. Keep model-dependent integration tests opt-in when Phase 2 arrives.
+This fetches the pinned llama.cpp source on first configure, compiles its CPU backend as a static dependency, and enables real model execution. Build time and disk usage are significantly larger than for Phase 1. To build offline, supply a populated `FETCHCONTENT_SOURCE_DIR_LLAMA_CPP` pointing to the **exact pinned source revision** and provide Catch2 v3 using `CMAKE_PREFIX_PATH`.
 
-## Current Engine semantics
+Optional CUDA: `cmake --preset cuda-release` requires `nvcc`, a compatible toolkit/driver and x64 C++ compiler. This uses the upstream llama.cpp CUDA backend, **not** a custom Apex implementation.
 
-`EngineMode::Real` is the default and will not simulate generation. Existing files produce an explicit "not implemented" error until Phase 2; missing paths produce clear errors.
+## Design & safe changes
 
-`EngineMode::Mock` is explicitly selected via `--mock` or the C++ constructor. Only identifiers beginning with `mock://` are accepted. No file is read, no tokenizer runs, and no tensors are evaluated. `isLoaded()` means the mock session is initialized in this mode. Calls to `generate()` before loading throw `std::logic_error`; invalid arguments throw `std::invalid_argument`.
+- Engine public headers are backend-neutral; model/vocabulary objects live only in the backend.
+- Mock mode accepts only a `mock://` identifier and is explicitly labeled.
+- Real mode validates local file existence, attempts a GGUF model load, and throws a typed exception on failure. It never falls back to mock output.
+- Generate is a raw text completion operation, not a chat template formatter.
+- Per-request context construction prevents KV-cache state leaking between prompts.
+- Decoding stops at EOS or max-tokens; context exhaustion fails before any generation.
+- `APEX_TEST_MODEL` is an optional local integration test path and must not be used by ordinary CI without explicit model provisioning.
+- Do not hardcode GPU performance claims or publish warm/cold benchmark comparisons without consistent methodology.
 
-When replacing a mock model, `loadModel()` clears the old mock state before validating the new identifier. `unloadModel()` is idempotent. The Engine is not thread-safe; concurrency belongs to later phases.
+## CI and dependencies
 
-## CI troubleshooting
+Linux mock CI remains required as `build-and-test`; a separate Windows-x64 job validates MSVC; a Linux real-backend job compiles pinned llama.cpp without downloading model weights. Catch2 is pinned to v3.5.2 and llama.cpp pinned to b12445 / commit ef3848f9d7d4cf7b6b2abfc3b4c960b55d6d9e91.
 
-If CMake says `Failed to find nvcc`, use `--preset cpu-release` instead of `cuda-release`. If Catch2 retrieval fails, inspect network restrictions or install Catch2 v3 locally. If tests are missing, run `cmake --build --preset cpu-release` before `ctest`.
-
-## Contribution checklist
-
-- Include tests for new state transitions and explicit error handling.
-- Preserve CPU-only configure/build/CTest support.
-- Never report mock throughput as LLM performance.
-- Keep changes scoped and describe how they were tested.
-- Prefer a pull request and a green CI run before merging.
+Upstream dependencies have separate licenses. Record changes to model/loader/format support in `docs/models.md` and benchmarking changes in `docs/benchmark-methodology.md`.

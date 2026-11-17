@@ -1,28 +1,29 @@
-# Apex architecture and Phase 1 boundaries
-
-Apex is being built incrementally. In Phase 1, the public C++ `apex::Engine` API, minimal CLI and tests exist; **real model execution does not**.
+# Apex architecture — Phase 2
 
 ```text
-CLI (src/main.cpp)
+Apex CLI (src/main.cpp)
   |
   v
-Engine (include/apex/engine.h, src/engine/engine.cpp)
-  +-- EngineMode::Real: unsupported until Phase 2 (never returns fake inference)
-  +-- EngineMode::Mock: deterministic, explicitly labeled smoke-test string
+Engine API (include/apex/engine.h)
+  |--- Explicit mock mode (no model, no real metrics)
+  |--- Real GGUF backend (src/engine/llama_backend.cpp, opt-in compile)
+          |
+          +-- Pinned llama.cpp model loader / GGUF parser
+          +-- llama.cpp tokenizer + decoder-only transformer execution
+          +-- Greedy or seeded sampled tokens, EOS/length handling
+          +-- Per-request llama_context / KV cache
+          +-- Load / TTFT / prefill / decode diagnostics
 
-CTest / Catch2: tests/test_engine.cpp + tests/test_main.cpp
-CMake: C++20 default; CUDA toolchain only when APEX_ENABLE_CUDA=ON
+CMake presets:
+  cpu-debug / cpu-release: mock-only, fast tests
+  cpu-inference: pinned llama.cpp CPU reference backend
+  cuda-release: pinned llama.cpp CUDA offload (requires toolkit, not Apex kernels)
 ```
 
-## Engineering boundaries for later phases
+The backend is a correctness-first adapter. Original Apex optimized tensor kernels, scheduler, SSE serving and multi-GPU execution belong in later phases. Do not claim model compatibility beyond upstream llama.cpp's pinned support.
 
-- **Phase 2:** add GGUF model loading, tokenizer, supported transformer forward-pass, token sampling and reproducible reference-output tests. Keep these behind the Engine contract.
-- **Phase 3:** introduce a real CUDA backend, tensor/device ownership, KV-cache and isolated optimized kernels; compare numeric correctness and performance.
-- **Phase 4:** add separate request parsing, admission/queue scheduling and OpenAI-compatible HTTP/SSE transport; never mix HTTP state with model state.
-- **Phase 5:** add long-context memory optimization and multi-GPU only after single-GPU correctness and reproducible profiling.
+`Engine` rejects invalid configuration and file paths. A failed model replacement leaves the engine unloaded; it does not use a previous model silently. Per-call context creation avoids KV reuse across independent calls at the cost of additional overhead.
 
-## Ownership and error rules
+Third-party source is fetched through CMake with an exact Git commit. Catch2 tests are independent of any model weights. The `APEX_TEST_MODEL` integration test is opt-in.
 
-The Engine owns its state and cannot be copied. A failed load leaves the engine unloaded; unloaded generation is an error. Invalid prompt/token-limit inputs must not be silently accepted. The mock identifier is **not a filesystem path** and cannot be used to assert that GGUF loading works.
-
-Record changes to model/runtime architecture as design notes before implementing new backends. Real-inference tests must not be satisfied by the mock backend.
+See [Model testing](models.md) and [Benchmark procedure](benchmark-methodology.md).
