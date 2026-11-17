@@ -24,7 +24,7 @@ void usage(std::ostream& out) {
         << "  --top-k N          Sampling top-k (default 40)\n"
         << "  --top-p F          Sampling top-p (default 0.95)\n"
         << "  --seed N           Sampling seed (default 42)\n"
-        << "  --gpu-layers N     GPU offload layers (default 0, CPU only)\n"
+        << "  --gpu-layers N     Offloaded layers; 0 excludes GPU devices (default 0)\n"
         << "  --print-token-ids  Print generated token IDs to stderr (diagnostic)\n"
         << "  --mock             Explicit synthetic response; no model loaded\n"
         << "  --help             Show this message\n";

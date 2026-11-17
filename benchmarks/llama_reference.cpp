@@ -5,6 +5,7 @@
 #include "llama.h"
 
 #include <algorithm>
+#include <array>
 #include <climits>
 #include <cstdint>
 #include <iostream>
@@ -82,6 +83,12 @@ int main(int argc, char** argv) {
         llama_backend_init();
         auto model_options = llama_model_default_params();
         model_options.n_gpu_layers = gpu_layers;
+        // Use the same explicit CPU-only device constraint as Apex, rather
+        // than merely setting n_gpu_layers=0 while CUDA is available.
+        std::array<ggml_backend_dev_t, 1> cpu_only_devices{{nullptr}};
+        if (gpu_layers == 0) {
+            model_options.devices = cpu_only_devices.data();
+        }
         Model model(llama_model_load_from_file(model_path.c_str(), model_options),
                     &llama_model_free);
         check(model != nullptr, "Reference cannot load GGUF");

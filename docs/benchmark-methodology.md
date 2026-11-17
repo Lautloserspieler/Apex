@@ -76,3 +76,7 @@ transformer numerical validation or a speedup over stock llama.cpp CLI.
 Each comparison writes `comparison.json` and separate binary logs under
 `benchmarks/results/`, which is git-ignored. A failed/mismatching comparison
 returns nonzero and retains the evidence.
+
+## Explicit CPU-only device selection (Phase 2)
+
+Pinned llama.cpp b12445 interprets `llama_model_params.devices == nullptr` as automatic accelerator discovery. Consequently `n_gpu_layers=0` by itself does **not** necessarily prevent all CUDA compute allocations in a CUDA build. Apex now provides an explicit null-terminated empty accelerator device list (`devices[0] == nullptr`) whenever `--gpu-layers 0` is requested. The separate direct-API comparison executable applies the same device constraint to ensure a matched reference configuration. CUDA-enabled GPU-offload runs are not changed. Verify actual CUDA buffer absence and Qwen exact-token CPU parity on a real GPU system before marking this edge case closed.

@@ -7,6 +7,8 @@
 - Model license: Apache 2.0 (consult the official model card before redistribution)
 - Backend: pinned llama.cpp `b12445` / commit `ef3848f9d7d4cf7b6b2abfc3b4c960b55d6d9e91`
 - Reference CPU configuration: greedy sampling (`--temperature 0`), `--gpu-layers 0`, context 2048 and max 64 new tokens.
+- **Strict CPU selection:** `--gpu-layers 0` explicitly passes an empty accelerator-device list to the pinned llama.cpp model loader. This avoids CUDA compute buffers even when the binary was built with CUDA and a GPU is visible. `--gpu-layers N` with `N > 0` keeps automatic accelerator selection. This distinction was required after reproducible Fedora tests showed that `n_gpu_layers=0` alone still allowed CUDA buffer allocation and changed greedy token output.
+
 
 ### Download one model file
 
@@ -92,3 +94,22 @@ hashes and raw logs. The same approach works with the CUDA binaries. The
 Windows/Linux CI uses the smaller, pinned TinyStories fixture to avoid a
 large external model dependency in ordinary pull requests. Keep the formal
 Qwen reference checkpoint open until these runs and hashes are actually saved.
+
+## Phase 2 backend isolation: Fedora RTX 5070
+
+A Qwen2.5-0.5B-Instruct Q4_K_M validation (GGUF SHA256 `74a4da8c9fdbcd15bd1f6d01d621410d31c6fc00986f5eb687824e7b93d7a9db`) found that, **before the strict CPU fix**, the pure CPU build produced 172 tokens, the CUDA-enabled build with `--gpu-layers 0` produced 164 tokens, and full CUDA offload produced 160 tokens. All runs reproduced identically within each backend and matched the pinned direct llama.cpp reference. With `CUDA_VISIBLE_DEVICES=-1`, the CUDA build produced the identical 172-token CPU sequence.
+
+The strict `--gpu-layers 0` device-selection fix is intended to make that CPU behavior independent of whether a GPU is visible. Actual CUDA-enabled builds should be validated on GPU hardware after updating Apex:
+
+```bash
+cmake --build --preset cpu-inference --parallel 8
+cmake --build --preset cuda-release --parallel 6
+python3 benchmarks/compare_reference.py \
+  --apex build/cuda-release/apex \
+  --reference build/cuda-release/apex_llama_reference \
+  --model models/qwen2.5-0.5b-instruct-q4_k_m.gguf \
+  --prompt-file benchmarks/phase2_qwen_prompt.txt \
+  --ctx-size 2048 --max-tokens 256 --gpu-layers 0
+```
+
+Compare its full `apex_token_ids` to the previously recorded 172-token pure CPU baseline. Inspect `reference.stderr.log` for actual CUDA device/compute buffers; merely seeing `FLASH_ATTN_EXT` in the graph is not evidence of CUDA execution. The GPU-offload mode (`--gpu-layers 99`) should continue passing independent per-backend exact-token reference checks.
