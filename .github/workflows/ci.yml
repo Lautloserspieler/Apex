@@ -98,6 +98,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           & ".\build\cpu-inference\apex.exe" --model "$env:APEX_TEST_MODEL" --prompt "Once upon a time" --ctx-size 256 --max-tokens 8 --temperature 0
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python benchmarks/compare_reference.py --apex ".\build\cpu-inference\\apex.exe" --reference ".\build\cpu-inference\\apex_llama_reference.exe" --model "$env:APEX_TEST_MODEL" --prompt "Once upon a time" --ctx-size 256 --max-tokens 16
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
   inference-backend:
     name: inference-backend
@@ -140,3 +142,8 @@ jobs:
           ./build/cpu-inference/apex \
             --model "$APEX_TEST_MODEL" --prompt "Once upon a time" \
             --ctx-size 256 --max-tokens 8 --temperature 0
+          python3 benchmarks/compare_reference.py \
+            --apex ./build/cpu-inference/apex \
+            --reference ./build/cpu-inference/apex_llama_reference \
+            --model "$APEX_TEST_MODEL" --prompt "Once upon a time" \
+            --ctx-size 256 --max-tokens 16

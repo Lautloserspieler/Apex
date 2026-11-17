@@ -72,3 +72,23 @@ Only enable `APEX_TEST_MODEL` for builds with `APEX_ENABLE_LLAMA=ON`. When no mo
 - Context must accommodate prompt plus max generated tokens
 - No reliable quality claims or speedup claims are made
 - A real model test and fair external baseline comparison are required before closing Phase 2
+
+## Optional deterministic Qwen2.5 reference parity
+
+After building the real `cpu-inference` target and downloading the documented
+Qwen2.5-0.5B-Instruct Q4_K_M GGUF, invoke:
+
+```bash
+python3 benchmarks/compare_reference.py \
+  --apex build/cpu-inference/apex \
+  --reference build/cpu-inference/apex_llama_reference \
+  --model models/qwen2.5-0.5b-instruct-q4_k_m.gguf \
+  --prompt-file benchmarks/phase2_qwen_prompt.txt \
+  --ctx-size 2048 --max-tokens 128 --gpu-layers 0
+```
+
+The runner writes exact token IDs and records the local GGUF hash, executable
+hashes and raw logs. The same approach works with the CUDA binaries. The
+Windows/Linux CI uses the smaller, pinned TinyStories fixture to avoid a
+large external model dependency in ordinary pull requests. Keep the formal
+Qwen reference checkpoint open until these runs and hashes are actually saved.
