@@ -29,6 +29,8 @@ jobs:
         with:
           path: .cache/fetchcontent
           key: apex-tests-${{ runner.os }}-${{ hashFiles('tests/CMakeLists.txt') }}
+      - name: Test standard-library Phase 2 benchmark parser
+        run: python3 -m unittest discover -s benchmarks/tests -p 'test_*.py' -v
       - name: Configure CPU-only mock build
         run: cmake --preset cpu-release -DFETCHCONTENT_BASE_DIR="${GITHUB_WORKSPACE}/.cache/fetchcontent"
       - name: Build
@@ -52,6 +54,51 @@ jobs:
           $vcvars = Join-Path $installation "VC/Auxiliary/Build/vcvars64.bat"
           $command = 'call "' + $vcvars + '" && cmake --preset cpu-release && cmake --build --preset cpu-release --parallel 2 && ctest --preset cpu-release --output-on-failure'
           & cmd.exe /d /s /c $command
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+
+  windows-real-gguf:
+    name: windows-real-gguf
+    runs-on: windows-2025
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Cache pinned llama.cpp and Catch2 sources
+        uses: actions/cache@v4
+        with:
+          path: .cache/windows-inference-fetchcontent
+          key: apex-windows-real-b12445-sha256-5dc44685-catch2-v3.5.2
+      - name: Configure and compile real backend under MSVC x64
+        shell: pwsh
+        run: |
+          $vswhere = Join-Path "${env:ProgramFiles(x86)}" "Microsoft Visual Studio/Installer/vswhere.exe"
+          if (-not (Test-Path $vswhere)) { throw "Visual Studio installer not found" }
+          $installation = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          if (-not $installation) { throw "MSVC C++ x64 tools not found" }
+          $vcvars = Join-Path $installation "VC/Auxiliary/Build/vcvars64.bat"
+          $deps = Join-Path $env:GITHUB_WORKSPACE ".cache/windows-inference-fetchcontent"
+          $command = 'call "' + $vcvars + '" && cmake --preset cpu-inference -DFETCHCONTENT_BASE_DIR="' + $deps + '" && cmake --build --preset cpu-inference --parallel 2'
+          & cmd.exe /d /s /c $command
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Download and verify pinned GGUF fixture
+        shell: pwsh
+        run: |
+          $modelDir = Join-Path $env:RUNNER_TEMP "apex-models"
+          New-Item -ItemType Directory -Path $modelDir -Force | Out-Null
+          $model = Join-Path $modelDir "TinyStories-656K-Q4_K_M.gguf"
+          Invoke-WebRequest -Uri "https://huggingface.co/tensorblock/TinyStories-656K-GGUF/resolve/3099aa586494d47fcc8a64f71528539c9384915f/TinyStories-656K-Q4_K_M.gguf?download=true" -OutFile $model
+          $actual = (Get-FileHash -Algorithm SHA256 $model).Hash.ToLowerInvariant()
+          $expected = "bc31753cc99ac43a6b611b1e390c6054e1e6a32b3b0c3090fe36ac018f8389b4"
+          if ($actual -ne $expected) { throw "GGUF checksum mismatch: $actual" }
+          Add-Content -Path $env:GITHUB_ENV -Value "APEX_TEST_MODEL=$model"
+      - name: Run real model integration tests and generation
+        shell: pwsh
+        run: |
+          ctest --preset cpu-inference --output-on-failure
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & ".\build\cpu-inference\apex.exe" --model "$env:APEX_TEST_MODEL" --prompt "Once upon a time" --ctx-size 256 --max-tokens 8 --temperature 0
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python benchmarks/compare_reference.py --apex ".\build\cpu-inference\\apex.exe" --reference ".\build\cpu-inference\\apex_llama_reference.exe" --model "$env:APEX_TEST_MODEL" --prompt "Once upon a time" --ctx-size 256 --max-tokens 16
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
   inference-backend:
@@ -86,7 +133,7 @@ jobs:
             --output "$RUNNER_TEMP/apex-models/TinyStories-656K-Q4_K_M.gguf" \
             "https://huggingface.co/tensorblock/TinyStories-656K-GGUF/resolve/3099aa586494d47fcc8a64f71528539c9384915f/TinyStories-656K-Q4_K_M.gguf?download=true"
           test "$(stat -c%s "$RUNNER_TEMP/apex-models/TinyStories-656K-Q4_K_M.gguf")" -gt 100000
-          sha256sum "$RUNNER_TEMP/apex-models/TinyStories-656K-Q4_K_M.gguf"
+          echo "bc31753cc99ac43a6b611b1e390c6054e1e6a32b3b0c3090fe36ac018f8389b4  $RUNNER_TEMP/apex-models/TinyStories-656K-Q4_K_M.gguf" | sha256sum -c -
       - name: End-to-end token generation with GGUF model
         env:
           APEX_TEST_MODEL: ${{ runner.temp }}/apex-models/TinyStories-656K-Q4_K_M.gguf
@@ -95,3 +142,8 @@ jobs:
           ./build/cpu-inference/apex \
             --model "$APEX_TEST_MODEL" --prompt "Once upon a time" \
             --ctx-size 256 --max-tokens 8 --temperature 0
+          python3 benchmarks/compare_reference.py \
+            --apex ./build/cpu-inference/apex \
+            --reference ./build/cpu-inference/apex_llama_reference \
+            --model "$APEX_TEST_MODEL" --prompt "Once upon a time" \
+            --ctx-size 256 --max-tokens 16

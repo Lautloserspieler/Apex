@@ -32,9 +32,30 @@ if(APEX_ENABLE_LLAMA)
         URL_HASH SHA256=5dc44685ba4bf265eb9101724b90c06d2c6999ffef6adee7903c39ea337a7f3f
     )
     FetchContent_MakeAvailable(llama_cpp)
+    # llama.cpp b12445 uses u8 literals as const char* in its chat template
+    # implementation. MSVC C++20 enables char8_t by default, which makes
+    # these upstream calls ill-formed. Scope the compatibility switch to the
+    # pinned third-party llama target; Apex itself remains strict C++20.
+    if(MSVC)
+        target_compile_options(llama PRIVATE /Zc:char8_t-)
+    endif()
 endif()
 
 include(CTest)
+
+# Direct upstream API reference, kept entirely separate from apex_engine.
+# Used only by real-model CI and opt-in Phase 2 correctness comparisons.
+if(APEX_ENABLE_LLAMA AND BUILD_TESTING)
+    add_executable(apex_llama_reference benchmarks/llama_reference.cpp)
+    target_link_libraries(apex_llama_reference PRIVATE llama)
+    set_target_properties(apex_llama_reference PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+    if(MSVC)
+        target_compile_options(apex_llama_reference PRIVATE /W4 /utf-8)
+    else()
+        target_compile_options(apex_llama_reference PRIVATE -Wall -Wextra -Wpedantic)
+    endif()
+endif()
 
 add_library(apex_engine
     src/engine/engine.cpp
