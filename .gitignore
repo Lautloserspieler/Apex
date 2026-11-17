@@ -1,0 +1,20 @@
+# CMake outputs
+/build/
+/.cache/
+CMakeUserPresets.json
+CMakeFiles/
+CMakeCache.txt
+Testing/
+
+# Compilers, IDEs and local environment
+*.o
+*.obj
+*.a
+*.lib
+*.so
+*.dll
+*.dylib
+*.exe
+.idea/
+.vscode/
+.DS_Store
