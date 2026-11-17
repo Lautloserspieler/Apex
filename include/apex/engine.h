@@ -29,6 +29,15 @@ struct GenerationStats {
     double ttft_seconds = 0.0;
     double decode_seconds = 0.0;
     std::string stop_reason; // eos, length or mock
+
+    // Phase 3 resource diagnostics. Sampled via periodic `nvidia-smi` polls
+    // across the whole generate() call (not a continuous device-side
+    // measurement), so treat these as approximate, not precise. Remain 0.0
+    // on CPU-only builds, CPU-only inference (gpu_layers == 0), mock mode,
+    // or whenever nvidia-smi is unavailable/fails - 0.0 therefore means
+    // "not measured", never "measured as zero".
+    double peak_vram_mib = 0.0;
+    double avg_power_watts = 0.0;
 };
 
 struct GenerationResult {

@@ -81,6 +81,76 @@ returns nonzero and retains the evidence.
 
 Pinned llama.cpp b12445 interprets `llama_model_params.devices == nullptr` as automatic accelerator discovery. Consequently `n_gpu_layers=0` by itself does **not** necessarily prevent all CUDA compute allocations in a CUDA build. Apex now provides an explicit null-terminated empty accelerator device list (`devices[0] == nullptr`) whenever `--gpu-layers 0` is requested. The separate direct-API comparison executable applies the same device constraint to ensure a matched reference configuration. CUDA-enabled GPU-offload runs are not changed. Verify actual CUDA buffer absence and Qwen exact-token CPU parity on a real GPU system before marking this edge case closed.
 
+## Phase 3: CUDA graph decode verification (ggml-cuda GGML_CUDA_GRAPHS)
+
+Apex does not implement its own CUDA graph capture. The pinned llama.cpp
+backend (ggml-cuda) already has one, controlled by the `GGML_CUDA_GRAPHS`
+CMake option, whose upstream default has varied by version. Apex's
+`CMakeLists.txt` now forces `GGML_CUDA_GRAPHS=ON` whenever `APEX_ENABLE_CUDA`
+is on, because Apex's autoregressive decode loop (`LlamaBackend::generate`)
+reuses one `llama_context` with a stable batch=1 shape per decode step — the
+exact case CUDA graph capture targets.
+
+**To verify it actually took effect and measure the delta on real GPU
+hardware:**
+
+```bash
+# 1. Confirm the option is actually ON for this configure.
+cmake --preset cuda-release 2>&1 | grep "Apex CUDA graphs"
+# Expect: -- Apex CUDA graphs (ggml-cuda GGML_CUDA_GRAPHS): ON
+
+cmake --build --preset cuda-release --parallel 2
+
+# 2. Baseline run with graphs explicitly disabled at runtime (no rebuild
+#    needed - this is the upstream opt-out env var).
+GGML_CUDA_DISABLE_GRAPHS=1 python3 benchmarks/phase2_baseline.py \
+  --apex build/cuda-release/apex \
+  --model models/qwen2.5-0.5b-instruct-q4_k_m.gguf \
+  --label cuda-graphs-off --gpu-layers 99 --ctx-size 2048 \
+  --max-tokens 256 --warmup 1 --runs 5
+
+# 3. Same run with graphs enabled (the default now).
+python3 benchmarks/phase2_baseline.py \
+  --apex build/cuda-release/apex \
+  --model models/qwen2.5-0.5b-instruct-q4_k_m.gguf \
+  --label cuda-graphs-on --gpu-layers 99 --ctx-size 2048 \
+  --max-tokens 256 --warmup 1 --runs 5
+```
+
+Compare the `decode_tok_s` medians between the two labeled result
+directories. This isolates exactly one variable (graph capture on/off) with
+everything else — model, prompt, context, offload — held constant, so any
+delta is directly attributable to CUDA graphs, unlike the cross-tool
+comparisons above. Record the result (including a null result, i.e. no
+measurable difference) in `benchmarks/results-2026-11-17.md` or a new dated
+file before concluding anything.
+
+## Phase 3: VRAM/power diagnostics (`peak_vram_mib`, `avg_power_watts`)
+
+`GenerationStats` now carries two CUDA-only diagnostic fields, addressing
+the "watt/token" and "VRAM/token" metrics called for in issue #3's
+research-based refinement. Implementation: a background `std::thread`
+polls `nvidia-smi --query-gpu=memory.used,power.draw` roughly every 100ms
+for the duration of one `generate()` call (only when `gpu_layers > 0` on a
+CUDA-enabled build), tracking the maximum VRAM reading and the average
+power reading. `main.cpp` prints `peak_vram_mib=` / `avg_power_watts=` in
+the `[Apex]` diagnostics line whenever at least one sample was collected.
+
+**What this is not:** a continuous, device-side measurement (e.g. via NVML
+polling or CUDA profiler hooks). It is a coarse, process-spawn-based
+sampler — fine for a first integration-overhead estimate, not for
+fine-grained kernel profiling. It also reports whole-GPU memory/power (via
+`-i 0`, the first visible device), so a shared/multi-tenant GPU will show
+noise from other processes. `0.0` always means "not measured" (CPU-only
+build, `gpu_layers == 0`, mock mode, or `nvidia-smi` missing/failed), never
+"measured as zero" — do not report it as a literal zero reading.
+
+**Not yet verified in CI or on real hardware** (written and syntax-checked
+in a session without a GPU or `nvidia-smi`): confirm on a CUDA build that
+`peak_vram_mib`/`avg_power_watts` populate with plausible values for a real
+generation run, and that they stay silently at `0.0` for a CPU-only run on
+the same `cuda-release` binary.
+
 ## External synthetic baseline recorded (2026-11-17)
 
 The official pinned `llama-bench` executable was built separately for CPU-only and CUDA on the Fedora RTX 5070 system. CPU `pp37/tg128`: **372.10 ± 4.07 / 109.09 ± 0.18 tok/s**; CUDA `pp37/tg128`: **11643.48 ± 3151.74 / 767.98 ± 1.12 tok/s**. These are standalone synthetic figures, **not** a like-for-like end-to-end performance comparison with the earlier multi-process Apex benchmark (CPU median prefill/decode **372.85 / 104.25**, CUDA **583.05 / 683.08 tok/s**). For full commands and constraints see [the dated evidence record](../benchmarks/results-2026-11-17.md#repeated-official-llamacpp-standalone-benchmark--fedora-44-2026-11-17). The standalone measurements establish a first external baseline only. Do not quote their differences as independent Apex kernel overhead; the same pinned llama.cpp kernels implement Apex Phase 2 real inference.
