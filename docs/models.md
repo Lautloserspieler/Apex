@@ -79,11 +79,11 @@ After building the real `cpu-inference` target and downloading the documented
 Qwen2.5-0.5B-Instruct Q4_K_M GGUF, invoke:
 
 ```bash
-python3 benchmarks/compare_reference.py \\
-  --apex build/cpu-inference/apex \\
-  --reference build/cpu-inference/apex_llama_reference \\
-  --model models/qwen2.5-0.5b-instruct-q4_k_m.gguf \\
-  --prompt-file benchmarks/phase2_qwen_prompt.txt \\
+python3 benchmarks/compare_reference.py \
+  --apex build/cpu-inference/apex \
+  --reference build/cpu-inference/apex_llama_reference \
+  --model models/qwen2.5-0.5b-instruct-q4_k_m.gguf \
+  --prompt-file benchmarks/phase2_qwen_prompt.txt \
   --ctx-size 2048 --max-tokens 128 --gpu-layers 0
 ```
 
