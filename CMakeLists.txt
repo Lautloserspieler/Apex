@@ -26,9 +26,10 @@ if(APEX_ENABLE_LLAMA)
     set(GGML_NATIVE OFF CACHE BOOL "" FORCE)
     set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
     # A commit-pinned source archive avoids a full Git history download.
-    # The SHA256 will be added after CI verifies the upstream archive digest.
+    # SHA256 verified on GitHub Actions against upstream commit source archive.
     FetchContent_Declare(llama_cpp
         URL https://codeload.github.com/ggml-org/llama.cpp/tar.gz/ef3848f9d7d4cf7b6b2abfc3b4c960b55d6d9e91
+        URL_HASH SHA256=5dc44685ba4bf265eb9101724b90c06d2c6999ffef6adee7903c39ea337a7f3f
     )
     FetchContent_MakeAvailable(llama_cpp)
 endif()
