@@ -68,7 +68,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: .cache/inference-fetchcontent
-          key: apex-inference-b12445-source-archive-catch2-v3.5.2-${{ runner.os }}
+          key: apex-inference-b12445-sha256-5dc44685-catch2-v3.5.2-${{ runner.os }}
       - name: Configure real GGUF backend
         run: cmake --preset cpu-inference -DFETCHCONTENT_BASE_DIR="${GITHUB_WORKSPACE}/.cache/inference-fetchcontent"
       - name: Confirm pinned archive contains no Git history
