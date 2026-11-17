@@ -59,11 +59,11 @@ previously downloaded to `models/`:
 cd ~/Entwicklung/Apex
 git pull origin main
 cmake --build --preset cpu-inference --parallel 8
-python3 benchmarks/compare_reference.py \\
-  --apex build/cpu-inference/apex \\
-  --reference build/cpu-inference/apex_llama_reference \\
-  --model models/qwen2.5-0.5b-instruct-q4_k_m.gguf \\
-  --ctx-size 2048 --max-tokens 128 --gpu-layers 0 \\
+python3 benchmarks/compare_reference.py \
+  --apex build/cpu-inference/apex \
+  --reference build/cpu-inference/apex_llama_reference \
+  --model models/qwen2.5-0.5b-instruct-q4_k_m.gguf \
+  --ctx-size 2048 --max-tokens 128 --gpu-layers 0 \
   --prompt-file benchmarks/phase2_qwen_prompt.txt
 ```
 
