@@ -12,7 +12,7 @@ Apex is a minimal, optimized inference core designed for maximum performance on 
 - Practical serving interface (OpenAI-compatible)
 
 ## Current Status
-Early stage. Folder structure, license and basic CMake setup are in place. No inference code yet.
+Early stage. Folder structure, license, CMake setup and CI are in place. No inference code yet.
 
 ## Roadmap / Milestones
 
@@ -35,6 +35,17 @@ Early stage. Folder structure, license and basic CMake setup are in place. No in
 mkdir build && cd build
 cmake ..
 cmake --build .
+```
+
+## Testing
+Tests use Catch2 and are run automatically via GitHub Actions on every push and pull request.
+
+To run tests locally:
+```bash
+mkdir build && cd build
+cmake ..
+cmake --build .
+ctest --output-on-failure
 ```
 
 ## License
