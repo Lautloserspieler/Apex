@@ -75,3 +75,19 @@ jobs:
         run: cmake --build --preset cpu-inference --parallel 2
       - name: Run no-model unit tests
         run: ctest --preset cpu-inference --output-on-failure
+      - name: Download pinned tiny GGUF fixture (less than 1 MB)
+        run: |
+          mkdir -p "$RUNNER_TEMP/apex-models"
+          curl --fail --location --retry 3 --silent --show-error \
+            --output "$RUNNER_TEMP/apex-models/TinyStories-656K-Q4_K_M.gguf" \
+            "https://huggingface.co/tensorblock/TinyStories-656K-GGUF/resolve/3099aa586494d47fcc8a64f71528539c9384915f/TinyStories-656K-Q4_K_M.gguf?download=true"
+          test "$(stat -c%s "$RUNNER_TEMP/apex-models/TinyStories-656K-Q4_K_M.gguf")" -gt 100000
+          sha256sum "$RUNNER_TEMP/apex-models/TinyStories-656K-Q4_K_M.gguf"
+      - name: End-to-end token generation with GGUF model
+        env:
+          APEX_TEST_MODEL: ${{ runner.temp }}/apex-models/TinyStories-656K-Q4_K_M.gguf
+        run: |
+          ctest --preset cpu-inference --output-on-failure
+          ./build/cpu-inference/apex \
+            --model "$APEX_TEST_MODEL" --prompt "Once upon a time" \
+            --ctx-size 256 --max-tokens 8 --temperature 0
