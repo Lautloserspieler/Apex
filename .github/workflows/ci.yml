@@ -2,27 +2,43 @@ name: CI
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
   pull_request:
-    branches: [ main ]
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build-and-test:
-    runs-on: ubuntu-latest
+    name: CPU build and tests (Ubuntu)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
 
     steps:
-    - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
-    - name: Install dependencies
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y build-essential cmake ninja-build
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake ninja-build
 
-    - name: Configure CMake
-      run: cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+      - name: Cache Catch2 sources
+        uses: actions/cache@v4
+        with:
+          path: .cache/fetchcontent
+          key: apex-catch2-${{ runner.os }}-${{ hashFiles('tests/CMakeLists.txt') }}
 
-    - name: Build
-      run: cmake --build build --config Release
+      - name: Configure CPU Release
+        run: cmake --preset cpu-release -DFETCHCONTENT_BASE_DIR="${GITHUB_WORKSPACE}/.cache/fetchcontent"
 
-    - name: Run tests
-      run: ctest --test-dir build --output-on-failure
+      - name: Build
+        run: cmake --build --preset cpu-release --parallel 2
+
+      - name: Test
+        run: ctest --preset cpu-release --output-on-failure

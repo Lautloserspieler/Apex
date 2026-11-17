@@ -1,52 +1,81 @@
 # Apex
 
-**High-performance C++/CUDA LLM inference engine** focused on low latency, high throughput and efficient serving.
+**Apex** is an experimental C++20/CUDA LLM inference engine focused on low latency, high throughput and efficient serving on consumer and multi-GPU hardware.
 
-Apex is a minimal, optimized inference core designed for maximum performance on consumer and multi-GPU hardware. The goal is to deliver measurable improvements over existing solutions (llama.cpp, vLLM, etc.) in targeted scenarios such as low-latency serving, long-context efficiency, and reduced overhead.
+> **Status: Phase 1 foundation. Apex does not load or execute a real LLM yet.**
+> The only supported generation today is a deliberately labeled mock, enabled with `--mock`. GGUF inference starts in [Phase 2](https://github.com/Lautloserspieler/Apex/issues/2). Do not use the placeholder for performance or model-quality comparisons.
 
 ## Goals
-- Extremely low time-to-first-token (TTFT) and high decode throughput
-- Efficient memory usage and kernel optimizations
-- Clean C++/CUDA codebase with minimal overhead
-- Reproducible benchmarks against established baselines
-- Practical serving interface (OpenAI-compatible)
 
-## Current Status
-Early stage. Folder structure, license, CMake setup and CI are in place. No inference code yet.
+- Low time-to-first-token (TTFT) and efficient prefill/decode throughput
+- Efficient memory usage, targeted CUDA kernels and reproducible benchmarks
+- A clean C++20 core with an **optional** CUDA toolchain
+- OpenAI-compatible serving when real inference is available
 
-## Roadmap / Milestones
+## Requirements
 
-### Milestone 1 – Minimal Inference Core (current focus)
-- Load a small model (e.g. via GGUF or simple format)
-- Run basic generation (greedy or simple sampling)
-- Simple benchmark harness to measure tokens/s and latency
-- Clear comparison baseline against llama.cpp
+- CMake **3.21+**, a C++20 compiler, and Ninja
+- Internet access on the first test configuration if Catch2 v3 is not already installed
+- **No NVIDIA GPU or CUDA toolkit needed** for Phase 1 CPU builds or tests
+- Optional CUDA configure: installed CUDA toolkit with `nvcc` (no CUDA kernels are included yet)
 
-### Milestone 2
-- First custom CUDA kernels / optimizations
-- Measurable performance improvement in at least one scenario
+## Quick start: build and test (Linux)
 
-### Milestone 3
-- Basic serving interface
-- Documentation and examples
-
-## Building
 ```bash
-mkdir build && cd build
-cmake ..
-cmake --build .
+git clone https://github.com/Lautloserspieler/Apex.git
+cd Apex
+cmake --preset cpu-release
+cmake --build --preset cpu-release --parallel
+ctest --preset cpu-release --output-on-failure
 ```
+
+Run the **mock** smoke test:
+
+```bash
+./build/cpu-release/apex --mock --prompt "Hello, Apex!" --max-tokens 16
+```
+
+Expected output starts with `[MOCK OUTPUT - NOT LLM INFERENCE]`. It contains the prompt, not generated language-model tokens.
+
+To test development builds:
+
+```bash
+cmake --preset cpu-debug
+cmake --build --preset cpu-debug
+ctest --preset cpu-debug --output-on-failure
+```
+
+Optional CUDA-toolchain-only configure (this **does not** provide GPU inference):
+
+```bash
+cmake --preset cuda-release
+cmake --build --preset cuda-release
+```
+
+When CUDA is enabled, CMake checks for `nvcc`; if unavailable, configuration fails with an actionable error. For explicit toolkit locations, pass `-DCMAKE_CUDA_COMPILER=/path/to/nvcc`.
+
+## CLI behavior
+
+- `apex --help` prints supported options.
+- `apex --mock [--model mock://identifier] --prompt "Hello"` emits **only synthetic mock text**.
+- `apex --model /path/to/model.gguf` is reserved for Phase 2 and rejects real inference for now.
+- Invalid arguments, unsupported backends, and calls before loading produce errors rather than fake model output.
+
+## Roadmap
+
+1. [Phase 1 — minimal core, reliable CPU build and CI](https://github.com/Lautloserspieler/Apex/issues/1)
+2. [Phase 2 — real GGUF models and text generation](https://github.com/Lautloserspieler/Apex/issues/2)
+3. [Phase 3 — CUDA/KV-cache performance](https://github.com/Lautloserspieler/Apex/issues/3)
+4. [Phase 4 — serving API](https://github.com/Lautloserspieler/Apex/issues/4)
+5. [Phase 5 — multi-GPU and advanced techniques](https://github.com/Lautloserspieler/Apex/issues/5)
+6. [Phase 6 — documentation and releases](https://github.com/Lautloserspieler/Apex/issues/6)
+
+See [development guide](docs/development.md) and [architecture](docs/architecture.md).
 
 ## Testing
-Tests use Catch2 and are run automatically via GitHub Actions on every push and pull request.
 
-To run tests locally:
-```bash
-mkdir build && cd build
-cmake ..
-cmake --build .
-ctest --output-on-failure
-```
+Catch2-based unit tests and CLI smoke tests run through CTest. GitHub Actions runs CPU-only builds and tests on every push to `main` and every pull request targeting `main`. CUDA is not required for the standard CI job. To use an already installed Catch2 v3, expose its CMake package location via `CMAKE_PREFIX_PATH`.
 
 ## License
-MIT
+
+MIT for original Apex code. Third-party dependencies and model weights retain their own licenses; review each before distributing.
