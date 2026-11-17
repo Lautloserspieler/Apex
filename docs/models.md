@@ -56,6 +56,15 @@ ctest --preset cpu-inference --output-on-failure
 
 Only enable `APEX_TEST_MODEL` for builds with `APEX_ENABLE_LLAMA=ON`. When no model path is provided, the integration test explicitly skips real generation.
 
+## Pinned cross-platform CI smoke fixture
+
+- Model: [tensorblock/TinyStories-656K-GGUF](https://huggingface.co/tensorblock/TinyStories-656K-GGUF)
+- Revision: `3099aa586494d47fcc8a64f71528539c9384915f`
+- File: `TinyStories-656K-Q4_K_M.gguf`
+- SHA256: `bc31753cc99ac43a6b611b1e390c6054e1e6a32b3b0c3090fe36ac018f8389b4`
+- Purpose: verify actual token generation and repeated deterministic outputs under Linux and Windows x64 CPU reference builds.
+- This tiny 656K-parameter model is **not** a meaningful CPU/GPU performance benchmark. Model weights are downloaded only in real-inference test jobs, never committed to the repository.
+
 ## Phase 2 limitations
 
 - Decoder-only text models, raw completions, one active request/context
