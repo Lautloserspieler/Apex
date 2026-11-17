@@ -71,14 +71,10 @@ jobs:
           key: apex-inference-b12445-source-archive-catch2-v3.5.2-${{ runner.os }}
       - name: Configure real GGUF backend
         run: cmake --preset cpu-inference -DFETCHCONTENT_BASE_DIR="${GITHUB_WORKSPACE}/.cache/inference-fetchcontent"
-      - name: Confirm source archive (no Git history) and record its checksum
+      - name: Confirm pinned archive contains no Git history
         run: |
           test -f ".cache/inference-fetchcontent/llama_cpp-src/CMakeLists.txt"
           test ! -d ".cache/inference-fetchcontent/llama_cpp-src/.git"
-          curl --fail --silent --show-error --location --retry 3 \
-            "https://codeload.github.com/ggml-org/llama.cpp/tar.gz/ef3848f9d7d4cf7b6b2abfc3b4c960b55d6d9e91" \
-            --output "$RUNNER_TEMP/llama-b12445.tar.gz"
-          sha256sum "$RUNNER_TEMP/llama-b12445.tar.gz"
       - name: Compile reference backend and Apex
         run: cmake --build --preset cpu-inference --parallel 2
       - name: Run no-model unit tests
