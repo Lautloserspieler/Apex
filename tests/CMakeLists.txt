@@ -10,9 +10,13 @@ FetchContent_MakeAvailable(Catch2)
 
 add_executable(apex_tests
   test_main.cpp
+  test_engine.cpp
 )
 
-target_link_libraries(apex_tests PRIVATE Catch2::Catch2WithMain)
+target_link_libraries(apex_tests PRIVATE
+  Catch2::Catch2WithMain
+  apex_engine
+)
 
 include(CTest)
 include(Catch)
