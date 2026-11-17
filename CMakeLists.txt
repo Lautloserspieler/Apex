@@ -23,6 +23,16 @@ if(APEX_ENABLE_LLAMA)
     set(LLAMA_BUILD_COMMON OFF CACHE BOOL "" FORCE)
     set(LLAMA_OPENSSL OFF CACHE BOOL "" FORCE)
     set(GGML_CUDA ${APEX_ENABLE_CUDA} CACHE BOOL "" FORCE)
+    if(APEX_ENABLE_CUDA)
+        # Phase 3: explicitly request ggml-cuda's own CUDA graph capture
+        # rather than relying on upstream's current default (it has varied
+        # by version). This targets decode, where Apex's autoregressive loop
+        # reuses one llama_context with a stable batch=1 shape per step - the
+        # exact case upstream's graph capture is built for. Apex does not
+        # implement its own CUDA graph logic; it only requests the pinned
+        # backend's existing one. Runtime opt-out: GGML_CUDA_DISABLE_GRAPHS=1.
+        set(GGML_CUDA_GRAPHS ON CACHE BOOL "" FORCE)
+    endif()
     set(GGML_NATIVE OFF CACHE BOOL "" FORCE)
     set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
     # A commit-pinned source archive avoids a full Git history download.
@@ -85,3 +95,6 @@ endif()
 
 message(STATUS "Apex real GGUF backend: ${APEX_ENABLE_LLAMA}")
 message(STATUS "Apex CUDA backend: ${APEX_ENABLE_CUDA}")
+if(APEX_ENABLE_CUDA)
+    message(STATUS "Apex CUDA graphs (ggml-cuda GGML_CUDA_GRAPHS): ${GGML_CUDA_GRAPHS}")
+endif()

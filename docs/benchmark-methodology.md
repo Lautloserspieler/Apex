@@ -81,6 +81,50 @@ returns nonzero and retains the evidence.
 
 Pinned llama.cpp b12445 interprets `llama_model_params.devices == nullptr` as automatic accelerator discovery. Consequently `n_gpu_layers=0` by itself does **not** necessarily prevent all CUDA compute allocations in a CUDA build. Apex now provides an explicit null-terminated empty accelerator device list (`devices[0] == nullptr`) whenever `--gpu-layers 0` is requested. The separate direct-API comparison executable applies the same device constraint to ensure a matched reference configuration. CUDA-enabled GPU-offload runs are not changed. Verify actual CUDA buffer absence and Qwen exact-token CPU parity on a real GPU system before marking this edge case closed.
 
+## Phase 3: CUDA graph decode verification (ggml-cuda GGML_CUDA_GRAPHS)
+
+Apex does not implement its own CUDA graph capture. The pinned llama.cpp
+backend (ggml-cuda) already has one, controlled by the `GGML_CUDA_GRAPHS`
+CMake option, whose upstream default has varied by version. Apex's
+`CMakeLists.txt` now forces `GGML_CUDA_GRAPHS=ON` whenever `APEX_ENABLE_CUDA`
+is on, because Apex's autoregressive decode loop (`LlamaBackend::generate`)
+reuses one `llama_context` with a stable batch=1 shape per decode step — the
+exact case CUDA graph capture targets.
+
+**To verify it actually took effect and measure the delta on real GPU
+hardware:**
+
+```bash
+# 1. Confirm the option is actually ON for this configure.
+cmake --preset cuda-release 2>&1 | grep "Apex CUDA graphs"
+# Expect: -- Apex CUDA graphs (ggml-cuda GGML_CUDA_GRAPHS): ON
+
+cmake --build --preset cuda-release --parallel 2
+
+# 2. Baseline run with graphs explicitly disabled at runtime (no rebuild
+#    needed - this is the upstream opt-out env var).
+GGML_CUDA_DISABLE_GRAPHS=1 python3 benchmarks/phase2_baseline.py \
+  --apex build/cuda-release/apex \
+  --model models/qwen2.5-0.5b-instruct-q4_k_m.gguf \
+  --label cuda-graphs-off --gpu-layers 99 --ctx-size 2048 \
+  --max-tokens 256 --warmup 1 --runs 5
+
+# 3. Same run with graphs enabled (the default now).
+python3 benchmarks/phase2_baseline.py \
+  --apex build/cuda-release/apex \
+  --model models/qwen2.5-0.5b-instruct-q4_k_m.gguf \
+  --label cuda-graphs-on --gpu-layers 99 --ctx-size 2048 \
+  --max-tokens 256 --warmup 1 --runs 5
+```
+
+Compare the `decode_tok_s` medians between the two labeled result
+directories. This isolates exactly one variable (graph capture on/off) with
+everything else — model, prompt, context, offload — held constant, so any
+delta is directly attributable to CUDA graphs, unlike the cross-tool
+comparisons above. Record the result (including a null result, i.e. no
+measurable difference) in `benchmarks/results-2026-11-17.md` or a new dated
+file before concluding anything.
+
 ## External synthetic baseline recorded (2026-11-17)
 
 The official pinned `llama-bench` executable was built separately for CPU-only and CUDA on the Fedora RTX 5070 system. CPU `pp37/tg128`: **372.10 ± 4.07 / 109.09 ± 0.18 tok/s**; CUDA `pp37/tg128`: **11643.48 ± 3151.74 / 767.98 ± 1.12 tok/s**. These are standalone synthetic figures, **not** a like-for-like end-to-end performance comparison with the earlier multi-process Apex benchmark (CPU median prefill/decode **372.85 / 104.25**, CUDA **583.05 / 683.08 tok/s**). For full commands and constraints see [the dated evidence record](../benchmarks/results-2026-11-17.md#repeated-official-llamacpp-standalone-benchmark--fedora-44-2026-11-17). The standalone measurements establish a first external baseline only. Do not quote their differences as independent Apex kernel overhead; the same pinned llama.cpp kernels implement Apex Phase 2 real inference.
