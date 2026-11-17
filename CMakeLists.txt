@@ -6,7 +6,20 @@ set(CMAKE_CUDA_STANDARD 17)
 
 enable_testing()
 
-# Placeholder – will be expanded as the project grows
 message(STATUS "Apex: High-performance inference engine")
 
+# Engine library
+add_library(apex_engine
+    src/engine/engine.cpp
+)
+
+target_include_directories(apex_engine PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+)
+
+# Main executable
+add_executable(apex src/main.cpp)
+target_link_libraries(apex PRIVATE apex_engine)
+
+# Tests
 add_subdirectory(tests)
