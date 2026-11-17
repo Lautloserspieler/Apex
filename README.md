@@ -67,6 +67,11 @@ CPU-only CI, Windows-x64 CI, and a Linux backend compilation job run on pull req
 
 The GGUF loader and model implementation belong to pinned llama.cpp; Apex does not yet independently validate every model architecture/quantization. Unsupported models, malformed files or insufficient memory can cause load failure. Timing results are **unwarmed single-run diagnostics**, not apples-to-apples performance benchmarks.
 
+Phase 2 reproducibility helpers: `benchmarks/phase2_baseline.py` runs repeated
+single-process invocations and collects raw metrics; `benchmarks/compare_reference.py`
+compares exact greedy token IDs with a **separate direct llama.cpp API caller**,
+when real builds/tests are enabled. See [Benchmark methodology](docs/benchmark-methodology.md).
+
 The roadmap is tracked in [Issues](https://github.com/Lautloserspieler/Apex/issues); [Phase 2](https://github.com/Lautloserspieler/Apex/issues/2) covers true generation and baseline validation, and [Phase 3](https://github.com/Lautloserspieler/Apex/issues/3) targets new CUDA optimizations.
 
 ## License

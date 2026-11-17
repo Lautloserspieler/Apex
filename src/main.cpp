@@ -24,7 +24,8 @@ void usage(std::ostream& out) {
         << "  --top-k N          Sampling top-k (default 40)\n"
         << "  --top-p F          Sampling top-p (default 0.95)\n"
         << "  --seed N           Sampling seed (default 42)\n"
-        << "  --gpu-layers N     GPU offload layers (default 0, CPU only)\n"
+        << "  --gpu-layers N     Offloaded layers; 0 excludes GPU devices (default 0)\n"
+        << "  --print-token-ids  Print generated token IDs to stderr (diagnostic)\n"
         << "  --mock             Explicit synthetic response; no model loaded\n"
         << "  --help             Show this message\n";
 }
@@ -60,6 +61,7 @@ void stats(const apex::GenerationStats& s) {
 int main(int argc, char** argv) {
     apex::EngineOptions cfg;
     bool mock = false;
+    bool print_token_ids = false;
     int max_tokens = 64;
     std::string model;
     std::string prompt = "Hello, Apex!";
@@ -71,6 +73,7 @@ int main(int argc, char** argv) {
             return 0;
         }
         if (option == "--mock") { mock = true; continue; }
+        if (option == "--print-token-ids") { print_token_ids = true; continue; }
         if (option != "--model" && option != "--prompt" && option != "--max-tokens" &&
             option != "--ctx-size" && option != "--seed" && option != "--temperature" &&
             option != "--top-k" && option != "--top-p" && option != "--gpu-layers") {
@@ -100,6 +103,10 @@ int main(int argc, char** argv) {
         }
     }
 
+    if (mock && print_token_ids) {
+        std::cerr << "--print-token-ids requires a real model backend\n";
+        return 2;
+    }
     if (mock && model.empty()) model = "mock://cli";
     if (!mock && model.empty()) {
         usage(std::cerr);
@@ -111,7 +118,17 @@ int main(int argc, char** argv) {
         engine.loadModel(model);
         auto result = engine.generateDetailed(prompt, max_tokens);
         std::cout << result.text << '\n';
-        if (!mock) stats(result.stats);
+        if (!mock) {
+            stats(result.stats);
+            if (print_token_ids) {
+                std::cerr << "APEX_TOKEN_IDS=";
+                for (std::size_t index = 0; index < result.generated_token_ids.size(); ++index) {
+                    if (index != 0) std::cerr << ',';
+                    std::cerr << result.generated_token_ids[index];
+                }
+                std::cerr << '\n';
+            }
+        }
     } catch (const std::exception& e) {
         std::cerr << "[Apex error] " << e.what() << '\n';
         return 1;

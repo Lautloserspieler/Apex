@@ -22,3 +22,6 @@ Testing/
 .idea/
 .vscode/
 .DS_Store
+
+# Local benchmark evidence; upload/share explicitly rather than commit private model outputs
+/benchmarks/results/
