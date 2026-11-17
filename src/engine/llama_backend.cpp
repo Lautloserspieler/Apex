@@ -149,7 +149,7 @@ GenerationResult LlamaBackend::generate(const std::string& prompt, int max_token
     // generations cannot inadvertently reuse prior prompt state.
     const auto tokens = tokenize(impl_->vocab, prompt);
     const std::size_t required = tokens.size() + static_cast<std::size_t>(max_tokens) - 1;
-    if (required > impl_->options.context_size) {
+    if (required >= impl_->options.context_size) {
         throw std::length_error("Prompt + max_tokens exceeds --ctx-size; lower --max-tokens or raise the context limit");
     }
 
