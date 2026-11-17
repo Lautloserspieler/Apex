@@ -29,6 +29,8 @@ jobs:
         with:
           path: .cache/fetchcontent
           key: apex-tests-${{ runner.os }}-${{ hashFiles('tests/CMakeLists.txt') }}
+      - name: Test standard-library Phase 2 benchmark parser
+        run: python3 -m unittest discover -s benchmarks/tests -p 'test_*.py' -v
       - name: Configure CPU-only mock build
         run: cmake --preset cpu-release -DFETCHCONTENT_BASE_DIR="${GITHUB_WORKSPACE}/.cache/fetchcontent"
       - name: Build
