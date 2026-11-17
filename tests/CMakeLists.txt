@@ -1,7 +1,10 @@
 # Prefer an already installed Catch2 package; only fetch it if necessary.
 find_package(Catch2 3 QUIET CONFIG)
 
-if(NOT TARGET Catch2::Catch2WithMain)
+if(Catch2_FOUND)
+    # Catch2's CMake test-discovery helper is shipped next to Catch2Config.cmake.
+    list(APPEND CMAKE_MODULE_PATH "${Catch2_DIR}")
+else()
     include(FetchContent)
     FetchContent_Declare(
         Catch2
@@ -10,6 +13,8 @@ if(NOT TARGET Catch2::Catch2WithMain)
         GIT_SHALLOW TRUE
     )
     FetchContent_MakeAvailable(Catch2)
+    # FetchContent does not automatically install Catch.cmake on CMAKE_MODULE_PATH.
+    list(APPEND CMAKE_MODULE_PATH "${catch2_SOURCE_DIR}/extras")
 endif()
 
 add_executable(apex_tests test_main.cpp test_engine.cpp)
