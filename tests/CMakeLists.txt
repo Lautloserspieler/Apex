@@ -17,7 +17,7 @@ else()
     list(APPEND CMAKE_MODULE_PATH "${catch2_SOURCE_DIR}/extras")
 endif()
 
-add_executable(apex_tests test_main.cpp test_engine.cpp)
+add_executable(apex_tests test_main.cpp test_engine.cpp test_inference.cpp)
 target_link_libraries(apex_tests PRIVATE Catch2::Catch2WithMain apex_engine)
 
 include(Catch)
@@ -30,4 +30,8 @@ set_tests_properties(apex_cli_mock_smoke
 
 add_test(NAME apex_cli_help COMMAND $<TARGET_FILE:apex> --help)
 set_tests_properties(apex_cli_help
-    PROPERTIES PASS_REGULAR_EXPRESSION "no real LLM inference")
+    PROPERTIES PASS_REGULAR_EXPRESSION "--model FILE")
+
+add_test(NAME apex_missing_model
+    COMMAND $<TARGET_FILE:apex> --model apex-nonexistent-model.gguf --prompt "hello")
+set_tests_properties(apex_missing_model PROPERTIES WILL_FAIL TRUE)

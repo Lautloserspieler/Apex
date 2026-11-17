@@ -12,7 +12,7 @@ TEST_CASE("Real inference is not silently simulated", "[engine]") {
     REQUIRE_THROWS_AS(engine.loadModel(""), std::invalid_argument);
     REQUIRE_THROWS_AS(engine.loadModel("missing-phase-1-model.gguf"), std::runtime_error);
     // This source file exists at test time, but is not an LLM model.
-    REQUIRE_THROWS_AS(engine.loadModel(__FILE__), std::logic_error);
+    REQUIRE_THROWS(engine.loadModel(__FILE__));
     REQUIRE_FALSE(engine.isLoaded());
 }
 
@@ -52,4 +52,26 @@ TEST_CASE("Failed replacement unloads the prior mock", "[engine]") {
     REQUIRE_FALSE(engine.isLoaded());
     engine.unloadModel();
     REQUIRE_FALSE(engine.isLoaded());
+}
+
+TEST_CASE("Engine options are validated before loading", "[engine]") {
+    apex::EngineOptions options;
+    options.context_size = 8;
+    REQUIRE_THROWS_AS(apex::Engine(apex::EngineMode::Mock, options), std::invalid_argument);
+
+    options = {};
+    options.gpu_layers = -1;
+    REQUIRE_THROWS_AS(apex::Engine(apex::EngineMode::Real, options), std::invalid_argument);
+
+    options = {};
+    options.temperature = -0.5f;
+    REQUIRE_THROWS_AS(apex::Engine(apex::EngineMode::Mock, options), std::invalid_argument);
+
+    options = {};
+    options.top_p = 0.0f;
+    REQUIRE_THROWS_AS(apex::Engine(apex::EngineMode::Mock, options), std::invalid_argument);
+
+    options = {};
+    options.top_k = -1;
+    REQUIRE_THROWS_AS(apex::Engine(apex::EngineMode::Mock, options), std::invalid_argument);
 }

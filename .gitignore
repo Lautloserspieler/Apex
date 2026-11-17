@@ -6,6 +6,10 @@ CMakeFiles/
 CMakeCache.txt
 Testing/
 
+# Locally downloaded GGUF model weights
+/models/
+*.gguf
+
 # Compilers, IDEs and local environment
 *.o
 *.obj

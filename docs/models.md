@@ -1,0 +1,65 @@
+# Phase 2 model testing
+
+## Recommended correctness baseline
+
+- Official repository: [Qwen/Qwen2.5-0.5B-Instruct-GGUF](https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF)
+- Example filename: `qwen2.5-0.5b-instruct-q4_k_m.gguf`
+- Model license: Apache 2.0 (consult the official model card before redistribution)
+- Backend: pinned llama.cpp `b12445` / commit `ef3848f9d7d4cf7b6b2abfc3b4c960b55d6d9e91`
+- Reference CPU configuration: greedy sampling (`--temperature 0`), `--gpu-layers 0`, context 2048 and max 64 new tokens.
+
+### Download one model file
+
+On Linux/macOS:
+
+```bash
+mkdir -p models
+curl -L --fail -o models/qwen2.5-0.5b-instruct-q4_k_m.gguf "https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-q4_k_m.gguf?download=true"
+sha256sum models/qwen2.5-0.5b-instruct-q4_k_m.gguf
+```
+
+On Windows Developer PowerShell:
+
+```powershell
+New-Item -ItemType Directory -Force models | Out-Null
+Invoke-WebRequest "https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-q4_k_m.gguf?download=true" -OutFile "models\qwen2.5-0.5b-instruct-q4_k_m.gguf"
+Get-FileHash "models\qwen2.5-0.5b-instruct-q4_k_m.gguf" -Algorithm SHA256
+```
+
+Downloading models is manual and independent of CI. Store the hash, model repository revision and file size with each benchmark report. Do not check models into Git. Model repositories can change: pin a Hugging Face revision for formal experiments.
+
+### Run the model
+
+```bash
+cmake --preset cpu-inference
+cmake --build --preset cpu-inference --parallel 2
+./build/cpu-inference/apex --model models/qwen2.5-0.5b-instruct-q4_k_m.gguf --prompt "Write a one-sentence greeting:" --ctx-size 2048 --max-tokens 64 --temperature 0
+```
+
+Windows uses `./build/cpu-inference/apex.exe`.
+
+**Important:** This is raw prompt **completion**, not model-specific chat formatting. For instruct models, chat quality may suffer without the correct special-token chat template. Model-specific chat templates are not implemented in this phase.
+
+### Optional integration test
+
+```bash
+export APEX_TEST_MODEL="$PWD/models/qwen2.5-0.5b-instruct-q4_k_m.gguf"
+ctest --preset cpu-inference --output-on-failure
+```
+
+PowerShell:
+
+```powershell
+$env:APEX_TEST_MODEL = (Resolve-Path .\models\qwen2.5-0.5b-instruct-q4_k_m.gguf).Path
+ctest --preset cpu-inference --output-on-failure
+```
+
+Only enable `APEX_TEST_MODEL` for builds with `APEX_ENABLE_LLAMA=ON`. When no model path is provided, the integration test explicitly skips real generation.
+
+## Phase 2 limitations
+
+- Decoder-only text models, raw completions, one active request/context
+- Supported GGUF architectures and quantizations determined by the pinned llama.cpp version
+- Context must accommodate prompt plus max generated tokens
+- No reliable quality claims or speedup claims are made
+- A real model test and fair external baseline comparison are required before closing Phase 2
