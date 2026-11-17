@@ -22,7 +22,7 @@ cmake --build --preset cpu-inference --parallel 2
 ctest --preset cpu-inference --output-on-failure
 ```
 
-This downloads a source archive for the pinned llama.cpp commit **without cloning Git history**, compiles its CPU backend as a static dependency, and enables real model execution. Build time and disk usage are still larger than for Phase 1. To build offline, supply a populated `FETCHCONTENT_SOURCE_DIR_LLAMA_CPP` pointing to the **exact pinned source revision** and provide Catch2 v3 using `CMAKE_PREFIX_PATH`.
+This downloads the **SHA-256-verified source archive** of the pinned llama.cpp commit **without cloning Git history**, compiles its CPU backend as a static dependency, and enables real model execution. Build time and disk usage are still larger than for Phase 1. To build offline, supply a populated `FETCHCONTENT_SOURCE_DIR_LLAMA_CPP` pointing to the **exact pinned source revision** and provide Catch2 v3 using `CMAKE_PREFIX_PATH`.
 
 Optional CUDA: `cmake --preset cuda-release` requires `nvcc`, a compatible toolkit/driver and x64 C++ compiler. This uses the upstream llama.cpp CUDA backend, **not** a custom Apex implementation.
 
