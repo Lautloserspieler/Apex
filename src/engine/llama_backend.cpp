@@ -261,7 +261,9 @@ LlamaBackend::~LlamaBackend() = default;
 GenerationResult LlamaBackend::generate(const std::string& prompt, int max_tokens) const {
     // Each request creates its own context and KV cache, so consecutive
     // generations cannot inadvertently reuse prior prompt state.
+    const auto request_start = Clock::now();
     const auto tokens = tokenize(impl_->vocab, prompt);
+    const auto tokenize_end = Clock::now();
     const std::size_t required = tokens.size() + static_cast<std::size_t>(max_tokens) - 1;
     if (required >= impl_->options.context_size) {
         throw std::length_error("Prompt + max_tokens exceeds --ctx-size; lower --max-tokens or raise the context limit");
@@ -272,6 +274,13 @@ GenerationResult LlamaBackend::generate(const std::string& prompt, int max_token
     ctx_params.n_batch = std::min<std::uint32_t>(512, impl_->options.context_size);
     ctx_params.n_ubatch = ctx_params.n_batch;
     ctx_params.n_seq_max = 1;
+    if (impl_->options.threads > 0) {
+        // Pin both prefill (batch) and decode thread pools so benchmark
+        // runs are comparable across hosts instead of using a host-derived
+        // upstream default.
+        ctx_params.n_threads = impl_->options.threads;
+        ctx_params.n_threads_batch = impl_->options.threads;
+    }
     ContextPtr ctx(llama_init_from_model(impl_->model.get(), ctx_params), &llama_free);
     if (!ctx) {
         throw std::runtime_error("Cannot create llama context (possibly out of memory)");
@@ -304,6 +313,8 @@ GenerationResult LlamaBackend::generate(const std::string& prompt, int max_token
     output.stats.stop_reason = "length";
 
     const auto start = Clock::now();
+    output.stats.tokenize_seconds = seconds(request_start, tokenize_end);
+    output.stats.context_setup_seconds = seconds(tokenize_end, start);
     const auto batch_size = static_cast<std::size_t>(ctx_params.n_batch);
     for (std::size_t offset = 0; offset < tokens.size(); offset += batch_size) {
         const auto count = static_cast<int32_t>(std::min(batch_size, tokens.size() - offset));
@@ -350,6 +361,7 @@ GenerationResult LlamaBackend::generate(const std::string& prompt, int max_token
     output.stats.peak_vram_mib = gpu_sampler.peak_vram_mib();
     output.stats.avg_power_watts = gpu_sampler.avg_power_watts();
 #endif
+    output.stats.request_seconds = seconds(request_start, Clock::now());
 
     return output;
 }

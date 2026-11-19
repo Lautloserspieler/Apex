@@ -53,6 +53,46 @@ endif()
 
 include(CTest)
 
+# Build metadata embedded into every --metrics-json record (Phase 3 step 1:
+# log commit SHA and backend configuration next to each measurement).
+set(APEX_GIT_REVISION "unknown")
+find_package(Git QUIET)
+if(GIT_FOUND)
+    execute_process(
+        COMMAND "${GIT_EXECUTABLE}" describe --always --dirty --abbrev=40
+        WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+        OUTPUT_VARIABLE _apex_git_revision
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        ERROR_QUIET
+        RESULT_VARIABLE _apex_git_result)
+    if(_apex_git_result EQUAL 0 AND _apex_git_revision)
+        set(APEX_GIT_REVISION "${_apex_git_revision}")
+    endif()
+endif()
+if(APEX_ENABLE_LLAMA)
+    set(APEX_LLAMA_CPP_REVISION "b12445/ef3848f9d7d4cf7b6b2abfc3b4c960b55d6d9e91")
+    if(FETCHCONTENT_SOURCE_DIR_LLAMA_CPP)
+        # A local source tree bypasses the SHA256-verified archive; do not
+        # let benchmark records claim the pinned revision unverified.
+        string(APPEND APEX_LLAMA_CPP_REVISION " (local source override, unverified)")
+    endif()
+else()
+    set(APEX_LLAMA_CPP_REVISION "disabled")
+endif()
+if(CMAKE_BUILD_TYPE)
+    set(APEX_BUILD_TYPE_NAME "${CMAKE_BUILD_TYPE}")
+else()
+    set(APEX_BUILD_TYPE_NAME "unspecified")
+endif()
+if(APEX_ENABLE_CUDA AND GGML_CUDA_GRAPHS)
+    set(APEX_CUDA_GRAPHS_FLAG 1)
+else()
+    set(APEX_CUDA_GRAPHS_FLAG 0)
+endif()
+configure_file(src/utils/build_info.h.in
+    "${CMAKE_CURRENT_BINARY_DIR}/generated/apex_build_info.h" @ONLY)
+message(STATUS "Apex Git revision: ${APEX_GIT_REVISION}")
+
 # Direct upstream API reference, kept entirely separate from apex_engine.
 # Used only by real-model CI and opt-in Phase 2 correctness comparisons.
 if(APEX_ENABLE_LLAMA AND BUILD_TESTING)
@@ -70,9 +110,16 @@ endif()
 add_library(apex_engine
     src/engine/engine.cpp
     src/engine/llama_backend.cpp
+    src/utils/metrics.cpp
 )
 target_include_directories(apex_engine PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
-target_include_directories(apex_engine PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src/engine")
+target_include_directories(apex_engine PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/engine"
+    "${CMAKE_CURRENT_BINARY_DIR}/generated")
+if(WIN32)
+    # GetProcessMemoryInfo for peak working-set reporting.
+    target_link_libraries(apex_engine PRIVATE psapi)
+endif()
 
 if(APEX_ENABLE_LLAMA)
     target_compile_definitions(apex_engine PRIVATE APEX_WITH_LLAMA=1)

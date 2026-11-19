@@ -25,3 +25,6 @@ Testing/
 
 # Local benchmark evidence; upload/share explicitly rather than commit private model outputs
 /benchmarks/results/
+
+# Python bytecode
+__pycache__/

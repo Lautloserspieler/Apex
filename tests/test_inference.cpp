@@ -59,3 +59,43 @@ TEST_CASE("Context overflow is rejected even at the exact boundary (APEX_TEST_MO
     REQUIRE(max_tokens > 0);
     REQUIRE_THROWS_AS(engine.generateDetailed("A short greeting:", max_tokens), std::length_error);
 }
+
+TEST_CASE("Phase 3 timing breakdown is consistent (APEX_TEST_MODEL)", "[inference]") {
+    const char* path = std::getenv("APEX_TEST_MODEL");
+    if (path == nullptr || std::string(path).empty()) {
+        SUCCEED("No APEX_TEST_MODEL configured; integration test is opt-in");
+        return;
+    }
+
+    apex::EngineOptions options;
+    options.context_size = 256;
+    options.gpu_layers = 0;
+    options.temperature = 0;
+    apex::Engine reference_engine(apex::EngineMode::Real, options);
+    REQUIRE(reference_engine.loadModel(path));
+    const auto reference = reference_engine.generateDetailed("Once upon a time", 8);
+
+    // A pinned thread count must not change greedy token output.
+    options.threads = 1;
+    apex::Engine engine(apex::EngineMode::Real, options);
+    REQUIRE(engine.loadModel(path));
+    const auto result = engine.generateDetailed("Once upon a time", 8);
+    REQUIRE(result.generated_token_ids == reference.generated_token_ids);
+
+    const auto& s = result.stats;
+    REQUIRE(s.tokenize_seconds >= 0.0);
+    REQUIRE(s.context_setup_seconds > 0.0);
+    REQUIRE(s.prefill_seconds > 0.0);
+    REQUIRE(s.ttft_seconds >= s.prefill_seconds);
+    REQUIRE(s.request_seconds > 0.0);
+    // The parts are measured on disjoint, consecutive intervals of the same
+    // generate() call, so together they cannot exceed the whole request.
+    REQUIRE(s.tokenize_seconds + s.context_setup_seconds + s.ttft_seconds +
+                s.decode_seconds <= s.request_seconds + 1e-6);
+#if defined(_WIN32) || defined(__linux__) || defined(__APPLE__)
+    REQUIRE(s.peak_rss_mib > 0.0);
+#endif
+    // CPU-only run: GPU diagnostics stay "not measured".
+    REQUIRE(s.peak_vram_mib == 0.0);
+    REQUIRE(s.avg_power_watts == 0.0);
+}

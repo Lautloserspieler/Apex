@@ -154,3 +154,96 @@ the same `cuda-release` binary.
 ## External synthetic baseline recorded (2026-11-17)
 
 The official pinned `llama-bench` executable was built separately for CPU-only and CUDA on the Fedora RTX 5070 system. CPU `pp37/tg128`: **372.10 ± 4.07 / 109.09 ± 0.18 tok/s**; CUDA `pp37/tg128`: **11643.48 ± 3151.74 / 767.98 ± 1.12 tok/s**. These are standalone synthetic figures, **not** a like-for-like end-to-end performance comparison with the earlier multi-process Apex benchmark (CPU median prefill/decode **372.85 / 104.25**, CUDA **583.05 / 683.08 tok/s**). For full commands and constraints see [the dated evidence record](../benchmarks/results-2026-11-17.md#repeated-official-llamacpp-standalone-benchmark--fedora-44-2026-11-17). The standalone measurements establish a first external baseline only. Do not quote their differences as independent Apex kernel overhead; the same pinned llama.cpp kernels implement Apex Phase 2 real inference.
+
+## Phase 3 step 1: instrumented benchmark matrix (`benchmarks/phase3_bench.py`)
+
+Issue #3 asks to *instrument before optimizing*. Apex now records the data a
+fair before/after comparison needs, and a matrix harness collects it.
+
+### What Apex itself measures
+
+`apex --metrics-json FILE` writes one JSON document (`schema:
+apex.metrics/1`) per process with:
+
+- **Build info**: Apex version, `git describe --always --dirty` captured at
+  CMake configure time, pinned llama.cpp revision (or `disabled`, or a
+  `local source override, unverified` marker when
+  `FETCHCONTENT_SOURCE_DIR_LLAMA_CPP` replaced the SHA256-verified archive),
+  build type, compiler, CUDA backend and CUDA graph flags.
+- **Config**: context size, max tokens, GPU layers, threads, sampler settings.
+  The prompt and generated text are deliberately **not** stored (they may be
+  private); prompt byte length and token IDs are.
+- **Per run**: `tokenize_seconds`, `context_setup_seconds` (llama context,
+  KV cache, sampler and batch creation), `prefill_seconds`, `ttft_seconds`,
+  `decode_seconds`, `request_seconds` (whole `generate()` call),
+  `peak_rss_mib`, and on CUDA runs `peak_vram_mib` / `avg_power_watts`.
+
+`ttft_seconds` and `prefill_seconds` keep their Phase 2 definition (they
+start at the first prefill batch). The new fields make the previously hidden
+part visible: `request ≈ tokenize + context_setup + ttft + decode`. The
+real-model integration test asserts that the parts never exceed the whole.
+
+`--repeat N` loads the model once and generates N times **in the same
+process**. Run 1 is labeled `cold` (first context allocation, first touch
+of memory-mapped weights), runs 2..N are `warm`. Every run still creates a
+fresh context/KV cache, so warm runs measure a hot process, not KV reuse.
+`--threads N` pins prefill and decode thread counts (`0` keeps the host-
+dependent llama.cpp default; pin it when comparing machines or builds).
+
+### What the harness adds
+
+```bash
+python3 benchmarks/phase3_bench.py \
+  --apex build/cuda-release/apex \
+  --reference build/cuda-release/apex_llama_reference \
+  --model models/qwen2.5-0.5b-instruct-q4_k_m.gguf \
+  --label qwen05b-rtx5070 \
+  --ctx-sizes 1024,4096 --max-tokens 128,512 \
+  --gpu-layers 0,99 --threads 8 \
+  --processes 3 --repeat 5
+```
+
+- Full cross product of prompts (`benchmarks/phase3_prompts/short.txt` and
+  `long.txt` by default; `--prompt NAME=PATH` to override) × context sizes ×
+  max tokens × GPU layers × threads. `--dry-run` prints the matrix.
+- Combinations whose prompt plus output does not fit the context are recorded
+  as `skipped-context`, not as failures.
+- **Correctness gate**: greedy decoding only. Every run of a configuration
+  must produce identical token IDs; with `--reference` the IDs must also match
+  the direct pinned llama.cpp caller exactly. Any mismatch marks the
+  configuration `failed` and the harness exits non-zero.
+- **Statistics**: median, mean, stdev, coefficient of variation, min and max,
+  separately for cold and warm runs (never pooled).
+- **Derived metrics**: prefill tok/s, decode tok/s and ms per output token
+  (decode steps = generated − 1, because prefill produces the first token),
+  energy per token `avg_power × (ttft + decode) / generated_tokens` (the
+  window the power sampler covers), and VRAM per context token.
+- **Memory per additional context token**: least-squares slope of median peak
+  VRAM (and peak RSS) over context sizes, holding everything else constant.
+  Weights do not scale with `--ctx-size`, so the slope isolates the per-slot
+  cost dominated by the KV cache, which makes KV-cache claims checkable.
+  **CPU caveat**: untouched KV-cache pages are not counted in RSS, so the RSS
+  slope reflects memory actually written, not memory allocated, and is
+  often near zero. The VRAM slope is meaningful because CUDA allocates eagerly.
+- **Environment**: Apex binary and model SHA256, prompt hashes, repository
+  revision, OS, CPU model, logical CPUs, RAM, GPU name/driver/memory, CUDA
+  driver version, `nvcc`, and `CUDA_VISIBLE_DEVICES`,
+  `GGML_CUDA_DISABLE_GRAPHS` and `OMP_NUM_THREADS`.
+
+Output goes to `benchmarks/results/<UTC>-<label>-<id>/` (git-ignored):
+`report.json`, `runs.csv`, `summary.csv`, `summary.md`, and `raw/` with every
+process's metrics JSON, stdout and stderr.
+
+CI runs a small TinyStories matrix (2 context sizes × 2 thread counts × 2
+processes × 3 runs, with reference parity) on every PR and uploads the
+evidence as the `phase3-bench-ci-tinystories` artifact. Those numbers come
+from a shared GitHub runner and a 656K-parameter model: they check that the
+pipeline and correctness gate work and are **not** performance results.
+
+### Not covered yet (remaining Phase 3 step 1 items)
+
+- Device-side timings with CUDA events and per-kernel breakdown (use
+  `nsys`/`ncu` on the binary until Apex owns kernels).
+- Allocation counts and host↔device transfer volume.
+- A GPU smoke/performance CI job (requires a self-hosted GPU runner).
+- NVML-based power/VRAM sampling instead of spawning `nvidia-smi`.
