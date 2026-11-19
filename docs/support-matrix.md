@@ -95,6 +95,20 @@ models, warm/cold protocols, and prompt/cache semantics — see
 `docs/benchmark-methodology.md` for the explicit caveats. Treat all figures
 above as Apex's own diagnostic baseline, not a competitive benchmark.
 
+## Phase 3 instrumentation status
+
+| Item | Status |
+|---|---|
+| Timing breakdown (tokenize, context setup, prefill, TTFT, decode, whole request) | Implemented; consistency asserted by the real-model integration test in CI |
+| Cold vs warm runs in one process (`--repeat`) | Implemented; CI-verified with TinyStories |
+| Pinned thread count (`--threads`) | Implemented; CI checks that greedy token IDs do not change with `--threads 1` |
+| Peak RSS | Implemented (Linux/macOS `getrusage`, Windows `GetProcessMemoryInfo`); process high-water mark |
+| Machine-readable records (`--metrics-json`) with build info and Git revision | Implemented |
+| Benchmark matrix with correctness gate, JSON/CSV/Markdown (`phase3_bench.py`) | Implemented; CI smoke on Linux with reference parity |
+| Energy per token, VRAM per context token | Derived in the harness; **not yet verified on real GPU hardware** |
+| CUDA-event device timings, allocation counts, transfer volume | Not started |
+| GPU CI job | Not started (needs a self-hosted GPU runner) |
+
 ## Explicit non-goals / out of scope for Phase 2
 
 - Encoder-decoder models (rejected explicitly at load time)

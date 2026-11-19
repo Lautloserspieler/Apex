@@ -57,9 +57,9 @@ ctest --preset cpu-inference --output-on-failure
 
 ## Current CLI options
 
-`--model`, `--prompt`, `--ctx-size`, `--max-tokens`, `--temperature`, `--top-k`, `--top-p`, `--seed`, `--gpu-layers`, `--mock`, `--help`.
+`--model`, `--prompt`, `--ctx-size`, `--max-tokens`, `--temperature`, `--top-k`, `--top-p`, `--seed`, `--gpu-layers`, `--threads`, `--repeat`, `--metrics-json`, `--print-token-ids`, `--mock`, `--help`.
 
-The result is printed to stdout. For real inference Apex reports prompt/output token counts, model-load time, time-to-first-token, prefill tokens/s and decode tokens/s to stderr. Each generation recreates the context to prevent KV state leaks between requests.
+The result is printed to stdout. For real inference Apex reports prompt/output token counts, model-load time, time-to-first-token, prefill tokens/s and decode tokens/s to stderr. Each generation recreates the context to prevent KV state leaks between requests. `--repeat N` generates N times after a single model load (run 1 cold, later runs warm) and `--metrics-json FILE` writes build info, configuration and the per-run timing breakdown (tokenize, context setup, prefill, TTFT, decode, whole request, peak RSS, and on CUDA peak VRAM and power) as JSON.
 
 ## Testing and limits
 
@@ -71,6 +71,8 @@ Phase 2 reproducibility helpers: `benchmarks/phase2_baseline.py` runs repeated
 single-process invocations and collects raw metrics; `benchmarks/compare_reference.py`
 compares exact greedy token IDs with a **separate direct llama.cpp API caller**,
 when real builds/tests are enabled. See [Benchmark methodology](docs/benchmark-methodology.md).
+
+Phase 3 benchmark matrix: `benchmarks/phase3_bench.py` runs prompts × context sizes × output lengths × GPU layers × threads, keeps cold and warm runs separate, gates every configuration on exact greedy token-ID determinism (and optionally parity with the reference caller), and writes JSON/CSV/Markdown reports including energy per token and memory per context token. See [Benchmark methodology](docs/benchmark-methodology.md#phase-3-step-1-instrumented-benchmark-matrix-benchmarksphase3_benchpy).
 
 The roadmap is tracked in [Issues](https://github.com/Lautloserspieler/Apex/issues); [Phase 2](https://github.com/Lautloserspieler/Apex/issues/2) covers true generation and baseline validation, and [Phase 3](https://github.com/Lautloserspieler/Apex/issues/3) targets new CUDA optimizations.
 

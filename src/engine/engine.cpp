@@ -1,4 +1,5 @@
 #include "apex/engine.h"
+#include "apex/metrics.h"
 #include "llama_backend.h"
 
 #include <cmath>
@@ -27,6 +28,9 @@ Engine::Engine(EngineMode mode, EngineOptions options)
     }
     if (options_.top_k < 0) {
         throw std::invalid_argument("top_k must be non-negative");
+    }
+    if (options_.threads < 0) {
+        throw std::invalid_argument("threads must be non-negative (0 = backend default)");
     }
 }
 
@@ -82,7 +86,9 @@ GenerationResult Engine::generateDetailed(const std::string& prompt, int max_tok
     if (!backend_) {
         throw std::logic_error("Real inference backend is unavailable");
     }
-    return backend_->generate(prompt, max_tokens);
+    GenerationResult result = backend_->generate(prompt, max_tokens);
+    result.stats.peak_rss_mib = process_peak_rss_mib();
+    return result;
 }
 
 std::string Engine::generate(const std::string& prompt, int max_tokens) const {

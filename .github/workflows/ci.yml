@@ -147,3 +147,23 @@ jobs:
             --reference ./build/cpu-inference/apex_llama_reference \
             --model "$APEX_TEST_MODEL" --prompt "Once upon a time" \
             --ctx-size 256 --max-tokens 16
+      - name: Phase 3 benchmark matrix smoke (correctness-gated, not a perf claim)
+        env:
+          APEX_TEST_MODEL: ${{ runner.temp }}/apex-models/TinyStories-656K-Q4_K_M.gguf
+        run: |
+          python3 benchmarks/phase3_bench.py \
+            --apex ./build/cpu-inference/apex \
+            --reference ./build/cpu-inference/apex_llama_reference \
+            --model "$APEX_TEST_MODEL" --label ci-tinystories \
+            --prompt short=benchmarks/phase3_prompts/short.txt \
+            --ctx-sizes 128,256 --max-tokens 16 --threads 1,2 \
+            --processes 2 --repeat 3 --out "$RUNNER_TEMP/apex-bench"
+          cat "$RUNNER_TEMP"/apex-bench/*/summary.md >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload Phase 3 benchmark evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase3-bench-ci-tinystories
+          path: ${{ runner.temp }}/apex-bench
+          if-no-files-found: ignore
+          retention-days: 30
